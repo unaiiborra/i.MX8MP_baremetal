@@ -85,7 +85,7 @@ void UART_init(UART_ID id)
 	UART_UCR4_BF_set_CTSTL(&ucr4, 31);
 	UART_UCR4_write(periph_base, ucr4);
 
-	UartUfcrValue ufcr = {0};
+	UartUfcrValue ufcr = {0};  // 0000 1010 0000 0001
 	UART_UFCR_BF_set_RXTL(&ufcr, 30);
 	UART_UFCR_BF_set_RFDIV(&ufcr, UART_UFCR_RFDIV_DIV_BY_5);
 	UART_UFCR_BF_set_TXTL(&ufcr, 2);

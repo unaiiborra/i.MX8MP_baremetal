@@ -1,18 +1,24 @@
 #include <drivers/uart/uart.h>
+#include <kernel/panic.h>
 #include <lib/kernel_utils.h>
 #include <lib/stdmacros.h>
 
 #include "lib/stdint.h"
 
-extern uint64 rust_add(uint64 a, uint64 b);
+extern void rust_panic_test();
 
 void kernel_entry()
 {
+	init_panic();
+
 	UART_putc(UART_ID_2, (uint8)(_currentEL() + 48));
 
 	UART_puts(UART_ID_2, "Hello world\n\r");
 
 	// UART_reset(UART_ID_2);
+
+	PANIC(Panic test from C !);
+	rust_panic_test();	// panic test
 
 	UART_init(UART_ID_2);
 

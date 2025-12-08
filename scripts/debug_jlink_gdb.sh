@@ -8,12 +8,18 @@ GDB="gdb"
 
 _start=0x40000000 
 
+
+sleep 1
+
 JLinkGDBServer -if $IFACE -device $DEVICE -speed $SPEED &
 
-pkill screen
-kitty --hold --title "ACM0" screen /dev/ttyACM0 115200 &
+if [[ -e /dev/ttyACM0 ]]; then
+    kitty --hold --title "ACM0" screen /dev/ttyACM0 115200 &
+fi
 
-sleep 1 
+if [[ -e /dev/ttyCH343USB0 ]]; then
+    kitty --hold --title "CH343USB0" screen /dev/ttyCH343USB0 115200 &
+fi
 
 kitty --title "GDB A53" \
     $GDB $ELF \
@@ -24,5 +30,7 @@ kitty --title "GDB A53" \
         -ex "set \$pc = $_start" \
         -ex "load" \
         -ex "layout split"
+
+pkill screen
 
 exit
