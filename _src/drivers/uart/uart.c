@@ -3,10 +3,6 @@
 #include <lib/stdint.h>
 #include <lib/stdmacros.h>
 
-#include "drivers/uart/raw/uart_ubir.h"
-#include "drivers/uart/raw/uart_ubmr.h"
-#include "drivers/uart/raw/uart_ucr1.h"
-#include "drivers/uart/raw/uart_umcr.h"
 
 static const uintptr UART_N_BASE[] = {
 	UART1_BASE,
@@ -70,8 +66,7 @@ void UART_init(UART_ID id)
 	UART_UCR2_BF_set_RXEN(&ucr2, true);
 	UART_UCR2_BF_set_TXEN(&ucr2, true);
 	UART_UCR2_BF_set_WS(&ucr2, true);
-	UART_UCR2_BF_set_PREN(&ucr2, true);
-	UART_UCR2_BF_set_CTSC(&ucr2, true);
+	UART_UCR2_BF_set_IRTS(&ucr2, true);
 	UART_UCR2_write(periph_base, ucr2);
 
 	UartUcr3Value ucr3 = {0};
@@ -85,18 +80,15 @@ void UART_init(UART_ID id)
 	UART_UCR4_BF_set_CTSTL(&ucr4, 31);
 	UART_UCR4_write(periph_base, ucr4);
 
-	UartUfcrValue ufcr = {0};  // 0000 1010 0000 0001
-	UART_UFCR_BF_set_RXTL(&ufcr, 30);
-	UART_UFCR_BF_set_RFDIV(&ufcr, UART_UFCR_RFDIV_DIV_BY_5);
-	UART_UFCR_BF_set_TXTL(&ufcr, 2);
+	UartUfcrValue ufcr = {0xA01};  // 0000 1010 0000 0001
 	UART_UFCR_write(periph_base, ufcr);
 
 	UartUbirValue ubir = {0};
-	UART_UBIR_BF_set_INC(&ubir, 2303);
+	UART_UBIR_BF_set_INC(&ubir, 0xF);
 	UART_UBIR_write(periph_base, ubir);
 
 	UartUbmrValue ubmr = {0};
-	UART_UBMR_BF_set_MOD(&ubmr, 3124);
+	UART_UBMR_BF_set_MOD(&ubmr, 0x68);
 	UART_UBMR_write(periph_base, ubmr);
 
 	UartUmcrValue umcr = {0};

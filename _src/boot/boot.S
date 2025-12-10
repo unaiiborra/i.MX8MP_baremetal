@@ -14,16 +14,7 @@ _start:
     ldr x0, =__stack_el1_top
     msr SP_EL1, x0
 
-    // Clean bss
-    ldr x1, =_bss_start
-    ldr x2, =_bss_end
-1:
-    cmp x1, x2
-    b.eq 2f
-    str xzr, [x1], #8
-    b 1b
-2:  nop
-
+    bl _clean_bss
 
     bl kernel_entry
 

@@ -3,16 +3,12 @@
 #include <lib/stdint.h>
 #include <lib/string.h>
 
-#include "drivers/uart/uart.h"	// TODO: remove when finished testing
-
 void strcopy(char *dst, char *src, uint64 max_size)
 {
 	for (uint64 i = 0; i < max_size - 1; i++) {
 		dst[i] = src[i];
 
-		if (src[i] == '\0') {
-			return;
-		};
+		if (src[i] == '\0') return;
 	}
 
 	dst[max_size - 1] = '\0';
@@ -109,7 +105,7 @@ char *stdint_to_ascii(STDINT_UNION n, STDINT_TYPES n_type, char *buf,
 		value = unsigned_value;
 	}
 
-	if (value == 0) {
+	if (value == 0 && !negative) {
 		if (buf_len < 2 + repr_len) goto panic;
 		int64 i = 0;
 		switch (repr) {
@@ -147,7 +143,7 @@ char *stdint_to_ascii(STDINT_UNION n, STDINT_TYPES n_type, char *buf,
 	switch (repr) {
 		case STDINT_REPR_DEC:
 			break;
-		case STDINT_REPR_HEX:
+		case STDINT_REPR_HEX:  // Values are reversed after
 			buf[i++] = 'x';
 			buf[i++] = '0';
 			break;
@@ -184,6 +180,7 @@ panic:
 	return (char *)0x0;
 }
 
+/*
 void test_stdint_to_ascii(int64 test_v, uint64 buf_size)
 {
 	char buf[buf_size];
@@ -404,3 +401,4 @@ void test_stdint_to_ascii(int64 test_v, uint64 buf_size)
 	UART_puts(UART_ID_2, buf);
 	UART_puts(UART_ID_2, "\r\n");
 }
+*/

@@ -3,8 +3,8 @@ include make/Folders.mk
 OPT_LEVEL   ?= -O2
 DEFINES     ?=
 
-MARCH       ?= armv8.2-a
-MCPU        ?= cortex-a76
+MARCH       ?= armv8-a
+MCPU        ?= cortex-a53+simd
 RS_TARGET	= aarch64-unknown-none
 
 ASM_FLAGS   = $(DEFINES)

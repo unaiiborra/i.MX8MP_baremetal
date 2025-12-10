@@ -2,8 +2,13 @@ SRC_S   = $(shell find $(SRC_DIR) -name '*.S')
 SRC_C   = $(shell find $(SRC_DIR) -name '*.c')
 SRC_CPP = $(shell find $(SRC_DIR) -name '*.cpp')
 SRC_RS	= $(shell find $(SRC_DIR) -name '*.rs')
-OBJ 	= $(patsubst $(SRC_DIR)/%, $(OBJ_DIR)/%, \
-       	  $(SRC_S:.S=.o) $(SRC_C:.c=.o) $(SRC_CPP:.cpp=.o) )
+
+OBJ_S   = $(patsubst $(SRC_DIR)/%.S, $(OBJ_DIR)/__%.o, $(SRC_S))
+OBJ_C   = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o,  $(SRC_C))
+OBJ_CPP = $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRC_CPP))
+
+OBJ = $(OBJ_S) $(OBJ_C) $(OBJ_CPP)
+
 DISASM 	= $(shell find $(OBJ_DIR) -name '*.S')
 
 

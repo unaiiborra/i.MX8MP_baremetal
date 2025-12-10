@@ -52,7 +52,7 @@ void panic()
 {
 	char buf[200];
 
-	UART_puts(PANIC_UART_OUTPUT, "\n\r!!![PANIQUED]!!!\n\r[Panic file]\n\r");
+	UART_puts(PANIC_UART_OUTPUT, "\n\r[PANIC!]\n\rPanic file:\t");
 	UART_puts(PANIC_UART_OUTPUT, (char *)PANIC_FILE_PTR);
 	UART_puts(PANIC_UART_OUTPUT, " at line ");
 
@@ -67,7 +67,7 @@ void panic()
 								  STDINT_UINT32, buf, 200, STDINT_REPR_DEC));
 	}
 
-	UART_puts(PANIC_UART_OUTPUT, "\n\r[Panic message]\n\r");
+	UART_puts(PANIC_UART_OUTPUT, "\n\rPanic message:\t");
 	UART_puts(PANIC_UART_OUTPUT, (char *)PANIC_MESSAGE_PTR);
 	UART_puts(PANIC_UART_OUTPUT, "\n\r");
 

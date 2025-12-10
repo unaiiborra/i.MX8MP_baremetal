@@ -8,7 +8,6 @@ pub enum UART_ID {
 }
 
 unsafe extern "C" {
-    fn UART_puts(id: u32, s: *const u8);
     fn UART_putc(id: u32, c: u8);
 }
 
@@ -20,10 +19,3 @@ pub fn UART_put_str(id: UART_ID, s: &str) {
     }
 }
 
-pub fn UART_put_cstr(id: UART_ID, s: &str) {
-    if s.as_bytes().last() != Some(&0) {
-        panic!("str does not end in \\0");
-    }
-
-    unsafe { UART_puts(id as u32, s.as_ptr()) };
-}

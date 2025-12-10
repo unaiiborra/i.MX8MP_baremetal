@@ -31,7 +31,7 @@ extern "C" fn rust_test_panic() -> ! {
 
 #[panic_handler]
 fn rust_panic(info: &PanicInfo) -> ! {
-    UART_put_str(UART_ID::UART_ID_2, "\n\r[Rust panic!]\n\r");
+    UART_put_str(UART_ID::UART_ID_2, "\n\r[Rust panic!]");
 
     let msg_len: usize = unsafe { PANIC_MESSAGE_LEN } as usize;
     let file_len: usize = unsafe { PANIC_FILE_LEN } as usize;

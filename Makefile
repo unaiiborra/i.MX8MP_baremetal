@@ -7,7 +7,7 @@ include make/Files.mk
 all: $(BIN)
 
 # Assembly files
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.S
+$(OBJ_DIR)/__%.o: $(SRC_DIR)/%.S
 	mkdir -p $(dir $@)
 	$(ASM) $(ASM_FLAGS) -c $< -o $@
 
