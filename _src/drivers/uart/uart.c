@@ -1,16 +1,7 @@
+#include <boot/panic.h>
 #include <drivers/uart/uart.h>
 #include <drivers/uart/uart_raw.h>
 #include <lib/stdint.h>
-#include <lib/stdmacros.h>
-
-#include "boot/panic.h"
-#include "drivers/uart/raw/uart_ucr1.h"
-#include "drivers/uart/raw/uart_ucr2.h"
-#include "drivers/uart/raw/uart_ufcr.h"
-#include "drivers/uart/raw/uart_usr2.h"
-#include "drivers/uart/raw/uart_uts.h"
-#include "drivers/uart/raw/uart_utxd.h"
-#include "lib/stdbitfield.h"
 
 // Rust fns (driver buffer control)
 extern bool UART_txbuf_push(UART_ID id, uint8 v);
@@ -24,6 +15,10 @@ static const uintptr UART_N_BASE[] = {
 	UART3_BASE,
 	UART4_BASE,
 };
+
+// Saves which irqs are enabled or disabled, each bitfield represents each
+// UART_ID
+static bitfield32 UART_IRQ_STATE[UART_ID_COUNT];
 
 static const uint8 USR1_IRQ_W1C_BITS[9] = {
 	3, 4, 5, 7, 8, 10, 11, 12, 15,
@@ -39,45 +34,6 @@ static inline bool UART_tx_fifo_full(uintptr periph_base)
 	return UART_UTS_BF_get_TXFULL(uts);
 }
 
-void UART_putc_sync(UART_ID id, uint8 c)
-{
-	while (UART_tx_fifo_full(UART_N_BASE[id])) {
-		asm volatile("nop");
-	}
-
-	UART_UTXD_write(UART_N_BASE[id], c);
-}
-
-void UART_putc(UART_ID id, uint8 c)
-{
-	uintptr periph_base = UART_N_BASE[id];
-
-	bool txbuf_full = !UART_txbuf_push(id, c);
-
-	if (txbuf_full) PANIC("txbuf filled");	// TODO: handle better
-
-	UartUcr1Value ucr1 = UART_UCR1_read(periph_base);
-	UART_UCR1_BF_set_TRDYEN(&ucr1, true);
-	UART_UCR1_write(periph_base, ucr1);
-}
-
-void UART_puts(const UART_ID id, const char *s)
-{
-	while (*s) {
-		uintptr periph_base = UART_N_BASE[id];
-
-		bool txbuf_full = !UART_txbuf_push(id, *s++);
-
-		if (txbuf_full) PANIC("txbuf filled");	// TODO: handle better
-
-		UartUcr1Value ucr1 = UART_UCR1_read(periph_base);
-		if (UART_UCR1_BF_get_TRDYEN(ucr1)) return;
-
-		UART_UCR1_BF_set_TRDYEN(&ucr1, true);
-		UART_UCR1_write(periph_base, ucr1);
-	}
-}
-
 void UART_reset(UART_ID id)
 {
 	// FIXME:
@@ -87,86 +43,6 @@ void UART_reset(UART_ID id)
 	UART_UCR2_write(base, (UartUcr2Value){.val = 0});
 
 	while (!(UART_UCR2_read(base).val & (1 << 0)));
-}
-
-void UART_init_stage0(UART_ID id)
-{
-	UART_reset(id);
-
-	// 17.2.12.1 7357
-	uintptr periph_base = UART_N_BASE[id];
-
-	UartUcr1Value ucr1 = {0};
-	UART_UCR1_BF_set_UARTEN(&ucr1, true);
-	UART_UCR1_BF_set_IDEN(&ucr1, false);
-	UART_UCR1_write(periph_base, ucr1);
-
-	UartUcr2Value ucr2 = {0};
-	UART_UCR2_BF_set_SRST(&ucr2, true);
-	UART_UCR2_BF_set_RXEN(&ucr2, true);
-	UART_UCR2_BF_set_TXEN(&ucr2, true);
-	UART_UCR2_BF_set_WS(&ucr2, true);
-	UART_UCR2_BF_set_IRTS(&ucr2, true);
-	UART_UCR2_write(periph_base, ucr2);
-
-	UartUcr3Value ucr3 = {0};
-	UART_UCR3_BF_set_RXDMUXSEL(&ucr3, true);
-	UART_UCR3_BF_set_RXDSEN(&ucr3, false);
-	UART_UCR3_BF_set_AWAKEN(&ucr3, false);
-
-	UART_UCR3_write(periph_base, ucr3);
-
-	UartUcr4Value ucr4 = {0};
-	UART_UCR4_BF_set_CTSTL(&ucr4, 31);
-	UART_UCR4_write(periph_base, ucr4);
-
-	UartUfcrValue ufcr = {0};		  // 0000 1010 0000 0001
-	UART_UFCR_BF_set_RXTL(&ufcr, 1);  // RX fifo threashold interrupt 1
-	UART_UFCR_BF_set_TXTL(&ufcr, 4);  // TX fifo threashold interrupt 4
-	UART_UFCR_BF_set_DCEDTE(&ufcr, false);
-	UART_UFCR_BF_set_RFDIV(&ufcr, UART_UFCR_RFDIV_DIV_BY_2);
-
-	UART_UFCR_write(periph_base, ufcr);
-
-	UartUbirValue ubir = {0};
-	UART_UBIR_BF_set_INC(&ubir, 0xF);
-	UART_UBIR_write(periph_base, ubir);
-
-	UartUbmrValue ubmr = {0};
-	UART_UBMR_BF_set_MOD(&ubmr, 0x68);
-	UART_UBMR_write(periph_base, ubmr);
-
-	UartUmcrValue umcr = {0};
-	UART_UMCR_write(periph_base, umcr);
-
-	// Flush rx fifo
-	UartUrxdValue urxd = UART_URXD_read(periph_base);
-	while (!UART_UTS_BF_get_RXEMPTY(UART_UTS_read(periph_base))) {
-		UART_URDX_BF_get_RX_DATA(urxd);
-	}
-
-	uint32 usr1_v = 0;
-	for (size_t i = 0; i < 9; i++) {
-		usr1_v |= (0b1 << USR1_IRQ_W1C_BITS[i]);
-	}
-
-	uint32 usr2_v = 0;
-	for (size_t i = 0; i < 8; i++) {
-		usr2_v |= (0b1 << USR2_IRQ_W2C_BITS[i]);
-	}
-
-	UART_USR1_write(periph_base, (UartUsr1Value){.val = usr1_v});
-	UART_USR2_write(periph_base, (UartUsr2Value){.val = usr2_v});
-}
-
-void UART_init_stage1(UART_ID id)
-{
-	uintptr periph_base = UART_N_BASE[id];
-
-	UartUcr1Value ucr1 = UART_UCR1_read(periph_base);
-	UART_UCR1_BF_set_RRDYEN(&ucr1, true);  // Rx IRQs
-	UART_UCR1_BF_set_TRDYEN(&ucr1, true);  // Tx IRQs
-	UART_UCR1_write(periph_base, ucr1);
 }
 
 bool UART_read(UART_ID id, uint8 *data) { return UART_rxbuf_pop(id, data); }
@@ -273,76 +149,120 @@ typedef enum {
 	UART_IRQ_SRC_COUNT
 } UART_IRQ_SOURCE;
 
-bitfield16 UART_get_irq_sources(UART_ID id)
+/// Enables/Disables the irq
+static void UART_set_irq_state(UART_ID id, UART_IRQ_SOURCE irq, bool state)
+{
+#ifdef TEST
+	if (irq >= UART_IRQ_SRC_COUNT) {
+		PANIC("invalid input");
+	}
+#endif
+
+	if (state)
+		BITFIELD32_SET(&(UART_IRQ_STATE[id]), irq);
+	else
+		BITFIELD32_CLEAR(&(UART_IRQ_STATE[id]), irq);
+
+	uintptr periph_base = UART_N_BASE[id];
+
+#define SET_IRQ_CASE(irq, reg, bf, regv_name)         \
+	case irq: {                                       \
+		regv_name r = UART_##reg##_read(periph_base); \
+		UART_##reg##_BF_set_##bf(&r, state);          \
+		UART_##reg##_write(periph_base, r);           \
+	} break;
+
+	switch (irq) {
+		/* ================= RX ================= */
+		SET_IRQ_CASE(UART_IRQ_SRC_RRDY, UCR1, RRDYEN, UartUcr1Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_IDLE, UCR1, IDEN, UartUcr1Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_RDR, UCR4, DREN, UartUcr4Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_RXDS, UCR3, RXDSEN, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_AGTIM, UCR2, ATEN, UartUcr2Value);
+
+		/* ================= TX ================= */
+		SET_IRQ_CASE(UART_IRQ_SRC_TXFE, UCR1, TXMPTYEN, UartUcr1Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_TRDY, UCR1, TRDYEN, UartUcr1Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_TXDC, UCR4, TCEN, UartUcr4Value);
+
+		/* ========== Error / Modem / Control ========== */
+		SET_IRQ_CASE(UART_IRQ_SRC_ORE, UCR4, OREN, UartUcr4Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_BRCD, UCR4, BKEN, UartUcr4Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_WAKE, UCR4, WKEN, UartUcr4Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_ADET, UCR1, ADEN, UartUcr1Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_ACST, UCR3, ACIEN, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_ESC, UCR2, ESCI, UartUcr2Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_IRINT, UCR4, ENIRI, UartUcr4Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_AIRINT, UCR3, AIRINTEN, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_AWAKE, UCR3, AWAKEN, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_FRAERR, UCR3, FRAERREN, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_PARITYERR, UCR3, PARERREN, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_RTSD, UCR1, RTSDEN, UartUcr1Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_RTSF, UCR2, RTSEN, UartUcr2Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_DTRF, UCR3, DTREN, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_RIDELT, UCR3, RI, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_DCDDELT, UCR3, DCD, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_DTRD, UCR3, DTRDEN, UartUcr3Value);
+		SET_IRQ_CASE(UART_IRQ_SRC_SAD, UMCR, SADEN, UartUmcrValue);
+
+		default:
+			PANIC("unhandled UART irq source");
+	}
+#undef SET_IRQ_CASE
+}
+
+/// Returns the cached irq state value
+static inline bool UART_get_irq_state(UART_ID id, UART_IRQ_SOURCE irq)
+{
+#ifdef TEST
+	if (irq >= UART_IRQ_SRC_COUNT) {
+		PANIC("invalid input");
+	}
+#endif
+
+	return (bool)BITFIELD32_GET(UART_IRQ_STATE[id], irq);
+}
+
+bitfield32 UART_get_irq_sources(UART_ID id)
 {
 	uintptr periph_base = UART_N_BASE[id];
 
 	UartUsr1Value usr1 = UART_USR1_read(periph_base);
 	UartUsr2Value usr2 = UART_USR2_read(periph_base);
 
-	UartUcr1Value ucr1 = UART_UCR1_read(periph_base);
-	UartUcr2Value ucr2 = UART_UCR2_read(periph_base);
-	UartUcr3Value ucr3 = UART_UCR3_read(periph_base);
-	UartUcr4Value ucr4 = UART_UCR4_read(periph_base);
-	UartUmcrValue umcr = UART_UMCR_read(periph_base);
+	bitfield32 sources = 0;
 
-	bitfield16 sources = 0;
+#define SET_SRC(bit, status) \
+	sources |= ((bitfield32)(((status) & UART_get_irq_state(id, bit)) << (bit)))
 
-#define SET_SRC(bit, status, enabled) \
-	sources |= ((bitfield16)((status) & (enabled)) << (bit))
+	SET_SRC(UART_IRQ_SRC_RRDY, UART_USR1_BF_get_RRDY(usr1));
+	SET_SRC(UART_IRQ_SRC_IDLE, UART_USR2_BF_get_IDLE(usr2));
+	SET_SRC(UART_IRQ_SRC_RDR, UART_USR2_BF_get_RDR(usr2));
+	SET_SRC(UART_IRQ_SRC_RXDS, UART_USR1_BF_get_RXDS(usr1));
+	SET_SRC(UART_IRQ_SRC_AGTIM, UART_USR1_BF_get_AGTIM(usr1));
 
-	SET_SRC(UART_IRQ_SRC_RRDY, UART_USR1_BF_get_RRDY(usr1),
-			UART_UCR1_BF_get_RRDYEN(ucr1));
-	SET_SRC(UART_IRQ_SRC_IDLE, UART_USR2_BF_get_IDLE(usr2),
-			UART_UCR1_BF_get_IDEN(ucr1));
-	SET_SRC(UART_IRQ_SRC_RDR, UART_USR2_BF_get_RDR(usr2),
-			UART_UCR4_BF_get_DREN(ucr4));
-	SET_SRC(UART_IRQ_SRC_RXDS, UART_USR1_BF_get_RXDS(usr1),
-			UART_UCR3_BF_get_RXDSEN(ucr3));
-	SET_SRC(UART_IRQ_SRC_AGTIM, UART_USR1_BF_get_AGTIM(usr1),
-			UART_UCR2_BF_get_ATEN(ucr2));
-	SET_SRC(UART_IRQ_SRC_TXFE, UART_USR2_BF_get_TXFE(usr2),
-			UART_UCR1_BF_get_TXMPTYEN(ucr1));
-	SET_SRC(UART_IRQ_SRC_TRDY, UART_USR1_BF_get_TRDY(usr1),
-			UART_UCR1_BF_get_TRDYEN(ucr1));
-	SET_SRC(UART_IRQ_SRC_TXDC, UART_USR2_BF_get_TXDC(usr2),
-			UART_UCR4_BF_get_TCEN(ucr4));
-	SET_SRC(UART_IRQ_SRC_ORE, UART_USR2_BF_get_ORE(usr2),
-			UART_UCR4_BF_get_OREN(ucr4));
-	SET_SRC(UART_IRQ_SRC_BRCD, UART_USR2_BF_get_BRCD(usr2),
-			UART_UCR4_BF_get_BKEN(ucr4));
-	SET_SRC(UART_IRQ_SRC_WAKE, UART_USR2_BF_get_WAKE(usr2),
-			UART_UCR4_BF_get_WKEN(ucr4));
-	SET_SRC(UART_IRQ_SRC_ADET, UART_USR2_BF_get_ADET(usr2),
-			UART_UCR1_BF_get_ADEN(ucr1));
-	SET_SRC(UART_IRQ_SRC_ACST, UART_USR2_BF_get_ACST(usr2),
-			UART_UCR3_BF_get_ACIEN(ucr3));
-	SET_SRC(UART_IRQ_SRC_ESC, UART_USR1_BF_get_ESCF(usr1),
-			UART_UCR2_BF_get_ESCI(ucr2));
-	SET_SRC(UART_IRQ_SRC_IRINT, UART_USR2_BF_get_IRINT(usr2),
-			UART_UCR4_BF_get_ENIRI(ucr4));
-	SET_SRC(UART_IRQ_SRC_AIRINT, UART_USR1_BF_get_AIRINT(usr1),
-			UART_UCR3_BF_get_AIRINTEN(ucr3));
-	SET_SRC(UART_IRQ_SRC_AWAKE, UART_USR1_BF_get_AWAKE(usr1),
-			UART_UCR3_BF_get_AWAKEN(ucr3));
-	SET_SRC(UART_IRQ_SRC_FRAERR, UART_USR1_BF_get_FRAERR(usr1),
-			UART_UCR3_BF_get_FRAERREN(ucr3));
-	SET_SRC(UART_IRQ_SRC_PARITYERR, UART_USR1_BF_get_PARITYERR(usr1),
-			UART_UCR3_BF_get_PARERREN(ucr3));
-	SET_SRC(UART_IRQ_SRC_RTSD, UART_USR1_BF_get_RTSD(usr1),
-			UART_UCR1_BF_get_RTSDEN(ucr1));
-	SET_SRC(UART_IRQ_SRC_RTSF, UART_USR2_BF_get_RTSF(usr2),
-			UART_UCR2_BF_get_RTSEN(ucr2));
-	SET_SRC(UART_IRQ_SRC_DTRF, UART_USR2_BF_get_DTRF(usr2),
-			UART_UCR3_BF_get_DTREN(ucr3));
-	SET_SRC(UART_IRQ_SRC_RIDELT, UART_USR2_BF_get_RIDELT(usr2),
-			UART_UCR3_BF_get_RI(ucr3));
-	SET_SRC(UART_IRQ_SRC_DCDDELT, UART_USR2_BF_get_DCDDELT(usr2),
-			UART_UCR3_BF_get_DCD(ucr3));
-	SET_SRC(UART_IRQ_SRC_DTRD, UART_USR1_BF_get_DTRD(usr1),
-			UART_UCR3_BF_get_DTRDEN(ucr3));
-	SET_SRC(UART_IRQ_SRC_SAD, UART_USR1_BF_get_SAD(usr1),
-			UART_UMCR_BF_get_SADEN(umcr));
+	SET_SRC(UART_IRQ_SRC_TXFE, UART_USR2_BF_get_TXFE(usr2));
+	SET_SRC(UART_IRQ_SRC_TRDY, UART_USR1_BF_get_TRDY(usr1));
+	SET_SRC(UART_IRQ_SRC_TXDC, UART_USR2_BF_get_TXDC(usr2));
+
+	SET_SRC(UART_IRQ_SRC_ORE, UART_USR2_BF_get_ORE(usr2));
+	SET_SRC(UART_IRQ_SRC_BRCD, UART_USR2_BF_get_BRCD(usr2));
+	SET_SRC(UART_IRQ_SRC_WAKE, UART_USR2_BF_get_WAKE(usr2));
+	SET_SRC(UART_IRQ_SRC_ADET, UART_USR2_BF_get_ADET(usr2));
+	SET_SRC(UART_IRQ_SRC_ACST, UART_USR2_BF_get_ACST(usr2));
+	SET_SRC(UART_IRQ_SRC_ESC, UART_USR1_BF_get_ESCF(usr1));
+	SET_SRC(UART_IRQ_SRC_IRINT, UART_USR2_BF_get_IRINT(usr2));
+	SET_SRC(UART_IRQ_SRC_AIRINT, UART_USR1_BF_get_AIRINT(usr1));
+	SET_SRC(UART_IRQ_SRC_AWAKE, UART_USR1_BF_get_AWAKE(usr1));
+	SET_SRC(UART_IRQ_SRC_FRAERR, UART_USR1_BF_get_FRAERR(usr1));
+	SET_SRC(UART_IRQ_SRC_PARITYERR, UART_USR1_BF_get_PARITYERR(usr1));
+	SET_SRC(UART_IRQ_SRC_RTSD, UART_USR1_BF_get_RTSD(usr1));
+	SET_SRC(UART_IRQ_SRC_RTSF, UART_USR2_BF_get_RTSF(usr2));
+	SET_SRC(UART_IRQ_SRC_DTRF, UART_USR2_BF_get_DTRF(usr2));
+	SET_SRC(UART_IRQ_SRC_RIDELT, UART_USR2_BF_get_RIDELT(usr2));
+	SET_SRC(UART_IRQ_SRC_DCDDELT, UART_USR2_BF_get_DCDDELT(usr2));
+	SET_SRC(UART_IRQ_SRC_DTRD, UART_USR1_BF_get_DTRD(usr1));
+	SET_SRC(UART_IRQ_SRC_SAD, UART_USR1_BF_get_SAD(usr1));
 
 #undef SET_SRC
 
@@ -396,9 +316,7 @@ static void handle_TRDY(UART_ID id)
 			// disable the tx threashold irq, as there is
 			// no more data available to send. It is enabled again when using
 			// UART_putc
-			UartUcr1Value ucr1 = UART_UCR1_read(periph_base);
-			UART_UCR1_BF_set_TRDYEN(&ucr1, false);
-			UART_UCR1_write(periph_base, ucr1);
+			UART_set_irq_state(id, UART_IRQ_SRC_TRDY, false);
 
 			break;
 		}
@@ -417,11 +335,131 @@ static const uart_irq_handler_t UART_IRQ_SOURCE_HANDLERS[] = {
 
 void UART_handle_irq(UART_ID id)
 {
-	UART_IRQ_SOURCE source = UART_get_irq_sources(id);
+	bitfield32 source = UART_get_irq_sources(id);
 
 	for (size_t i = UART_IRQ_SRC_START; i < UART_IRQ_SRC_COUNT; i++) {
-		if (BITFIELD16_GET(source, i)) {
+		if (BITFIELD32_GET(source, i)) {
 			UART_IRQ_SOURCE_HANDLERS[i](id);
 		}
 	}
+}
+
+/*
+	------------
+		INIT
+	------------
+*/
+
+void UART_init_stage0(UART_ID id)
+{
+	UART_IRQ_STATE[id] = 0;
+
+	UART_reset(id);
+
+	// 17.2.12.1 7357
+	uintptr periph_base = UART_N_BASE[id];
+
+	UartUcr1Value ucr1 = {0};
+	UART_UCR1_BF_set_UARTEN(&ucr1, true);
+	UART_UCR1_BF_set_IDEN(&ucr1, false);
+	UART_UCR1_write(periph_base, ucr1);
+
+	UartUcr2Value ucr2 = {0};
+	UART_UCR2_BF_set_SRST(&ucr2, true);
+	UART_UCR2_BF_set_RXEN(&ucr2, true);
+	UART_UCR2_BF_set_TXEN(&ucr2, true);
+	UART_UCR2_BF_set_WS(&ucr2, true);
+	UART_UCR2_BF_set_IRTS(&ucr2, true);
+	UART_UCR2_write(periph_base, ucr2);
+
+	UartUcr3Value ucr3 = {0};
+	UART_UCR3_BF_set_RXDMUXSEL(&ucr3, true);
+	UART_UCR3_BF_set_RXDSEN(&ucr3, false);
+	UART_UCR3_BF_set_AWAKEN(&ucr3, false);
+
+	UART_UCR3_write(periph_base, ucr3);
+
+	UartUcr4Value ucr4 = {0};
+	UART_UCR4_BF_set_CTSTL(&ucr4, 31);
+	UART_UCR4_write(periph_base, ucr4);
+
+	UartUfcrValue ufcr = {0};		  // 0000 1010 0000 0001
+	UART_UFCR_BF_set_RXTL(&ufcr, 1);  // RX fifo threashold interrupt 1
+	UART_UFCR_BF_set_TXTL(&ufcr, 4);  // TX fifo threashold interrupt 4
+	UART_UFCR_BF_set_DCEDTE(&ufcr, false);
+	UART_UFCR_BF_set_RFDIV(&ufcr, UART_UFCR_RFDIV_DIV_BY_2);
+
+	UART_UFCR_write(periph_base, ufcr);
+
+	UartUbirValue ubir = {0};
+	UART_UBIR_BF_set_INC(&ubir, 0xF);
+	UART_UBIR_write(periph_base, ubir);
+
+	UartUbmrValue ubmr = {0};
+	UART_UBMR_BF_set_MOD(&ubmr, 0x68);
+	UART_UBMR_write(periph_base, ubmr);
+
+	UartUmcrValue umcr = {0};
+	UART_UMCR_write(periph_base, umcr);
+
+	// Flush rx fifo
+	UartUrxdValue urxd = UART_URXD_read(periph_base);
+	while (!UART_UTS_BF_get_RXEMPTY(UART_UTS_read(periph_base))) {
+		UART_URDX_BF_get_RX_DATA(urxd);
+	}
+
+	uint32 usr1_v = 0;
+	for (size_t i = 0; i < 9; i++) {
+		usr1_v |= (0b1 << USR1_IRQ_W1C_BITS[i]);
+	}
+
+	uint32 usr2_v = 0;
+	for (size_t i = 0; i < 8; i++) {
+		usr2_v |= (0b1 << USR2_IRQ_W2C_BITS[i]);
+	}
+
+	UART_USR1_write(periph_base, (UartUsr1Value){.val = usr1_v});
+	UART_USR2_write(periph_base, (UartUsr2Value){.val = usr2_v});
+}
+
+void UART_init_stage1(UART_ID id)
+{
+	UART_set_irq_state(id, UART_IRQ_SRC_RRDY, true);
+	UART_set_irq_state(id, UART_IRQ_SRC_TRDY, true);
+}
+
+/*
+	------------
+		put
+	------------
+*/
+
+void UART_putc_sync(UART_ID id, const uint8 c)
+{
+	while (UART_tx_fifo_full(UART_N_BASE[id])) {
+		for (size_t i = 0; i < 3000; i++) asm volatile("nop");
+	}
+
+	UART_UTXD_write(UART_N_BASE[id], c);
+}
+
+void UART_puts_sync(UART_ID id, const char *s)
+{
+	while (*s) UART_putc_sync(id, *s++);
+}
+
+void UART_putc(UART_ID id, const uint8 c)
+{
+	bool txbuf_full = !UART_txbuf_push(id, c);
+
+	if (txbuf_full) PANIC("txbuf filled");	// TODO: handle better
+
+	// If TRDY is not enabled enable it
+	if (!UART_get_irq_state(id, UART_IRQ_SRC_TRDY))
+		UART_set_irq_state(id, UART_IRQ_SRC_TRDY, true);
+}
+
+void UART_puts(const UART_ID id, const char *s)
+{
+	while (*s) UART_putc(id, *s++);
 }

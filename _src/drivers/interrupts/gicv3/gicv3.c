@@ -14,16 +14,23 @@
 #include "lib/string.h"
 
 // Declared at gicv3_arm_interface.S
-extern void GICV3_ARM_ICC_SRE_EL1_write(uint64 v);
-extern void GICV3_ARM_ICC_PMR_EL1_write(uint64 v);
-extern void GICV3_ARM_ICC_IGRPEN1_EL1_EL1_write(uint64 v);
+extern void _GICV3_ARM_ICC_SRE_EL1_write(uint64 v);
+extern void _GICV3_ARM_ICC_PMR_EL1_write(uint64 v);
+extern void _GICV3_ARM_ICC_IGRPEN1_EL1_write(uint64 v);
+extern void _GICV3_ARM_ICC_EOIR1_EL1_write(uint64 v);
+extern uint64 _GICV3_ARM_ICC_IAR1_EL1_read(void);
+
+void GICV3_set_cpu_priority_threshold(uint8 threshold)
+{
+	_GICV3_ARM_ICC_PMR_EL1_write(threshold);
+}
 
 static inline void GICV3_arm_interface_enable(void)
 {
 	// Enable system register interface
-	GICV3_ARM_ICC_SRE_EL1_write(1);
-	GICV3_ARM_ICC_PMR_EL1_write(0xFF);
-	GICV3_ARM_ICC_IGRPEN1_EL1_EL1_write(1);
+	_GICV3_ARM_ICC_SRE_EL1_write(1);
+	_GICV3_ARM_ICC_PMR_EL1_write(0xFF);
+	_GICV3_ARM_ICC_IGRPEN1_EL1_write(1);
 }
 
 /// If irq number is not valid panics
@@ -165,6 +172,32 @@ void GICV3_init_cpu(size_t cpu)
 	GICV3_arm_interface_enable();
 }
 
+void GICV3_init_irq(imx8mp_irq irq, uint8 priority, gicv3_irq_trigger trigger,
+					ARM_cpu_affinity cpu)
+{
+	GICV3_set_spi_group1ns(irq, true);
+
+	switch (trigger) {
+		case GICV3_LEVEL_SENSITIVE:
+			GICV3_set_level_sensitive(irq);
+			break;
+
+		case GICV3_EDGE_TRIGGERED:
+			GICV3_set_edge_triggered(irq);
+			break;
+
+		default:
+			PANIC("Invalid enum");
+			break;
+	}
+
+	GICV3_set_priority(irq, priority);
+
+	GICV3_route_spi_to_cpu(irq, cpu);
+
+	GICV3_enable_spi(irq);
+}
+
 void uart_irq_init()
 {
 	imx8mp_irq uart_irq = IMX8MP_IRQ_UART2;
@@ -181,11 +214,9 @@ void uart_irq_init()
 	GICV3_enable_spi(uart_irq);
 }
 
-extern uint64 GICV3_ARM_ICC_IAR1_EL1_read(void);
-
 uint64 GICV3_get_intid_el1()
 {
-	return GICV3_ARM_ICC_IAR1_EL1_read() & 0xFFFFFF;
+	return _GICV3_ARM_ICC_IAR1_EL1_read() & 0xFFFFFF;
 }
 
 imx8mp_irq GICV3_imx8mp_irq_from_intid(uint64 intid)
@@ -208,9 +239,7 @@ imx8mp_irq GICV3_imx8mp_irq_from_intid(uint64 intid)
 	return (imx8mp_irq)(intid - 32);
 }
 
-extern void GICV3_ARM_ICC_EOIR1_EL1_write(uint64 v);
-
 void GICV3_ack_intid_el1(uint64 irq_token)
 {
-	GICV3_ARM_ICC_EOIR1_EL1_write(irq_token);
+	_GICV3_ARM_ICC_EOIR1_EL1_write(irq_token);
 }

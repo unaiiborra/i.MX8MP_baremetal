@@ -57,7 +57,6 @@ extern "C" fn UART_txbuf_push(id: UART_ID, v: u8) -> bool {
 }
 
 // Pop
-
 #[unsafe(no_mangle)]
 extern "C" fn UART_txbuf_pop(id: UART_ID, v: *mut u8) -> bool {
     if let Some(ptr) = unsafe { v.as_mut() } {

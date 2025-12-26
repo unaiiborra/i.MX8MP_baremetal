@@ -5,7 +5,7 @@
 
 .global _switch_to_el1
 _switch_to_el1:
- mrs x0, CurrentEL
+    mrs x0, CurrentEL
     lsr x0, x0, #2
     cmp x0, #2
     b.ne hang
