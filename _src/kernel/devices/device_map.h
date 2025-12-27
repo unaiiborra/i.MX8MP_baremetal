@@ -30,3 +30,9 @@
 	--- GICV3 ---
 */
 #define GIC_BASE IMX8MP_A53_GIC_BASE
+
+/*
+	--- TMU ---
+*/
+#define TMU_OFFSET 0x260000UL
+#define TMU_BASE (IMX8MP_MMIO_AIPS1_BASE + TMU_OFFSET)
