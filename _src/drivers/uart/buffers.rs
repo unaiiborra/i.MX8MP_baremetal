@@ -16,13 +16,13 @@ impl<const T: usize> RingBuffer<T> {
     }
 
     #[inline]
-    fn next_head(&self) -> usize {
-        (self.head + 1) & Self::MASK
+    pub fn is_full(&self) -> bool {
+        self.next(self.head) == self.tail
     }
 
     #[inline]
-    pub fn is_full(&self) -> bool {
-        self.next_head() == self.tail
+    fn next(&self, v: usize) -> usize {
+        (v + 1) & Self::MASK
     }
 
     pub fn push(&mut self, v: u8) -> bool {
@@ -34,7 +34,7 @@ impl<const T: usize> RingBuffer<T> {
         }
 
         self.buf[self.head] = v;
-        self.head = self.next_head();
+        self.head = self.next(self.head);
 
         true
     }

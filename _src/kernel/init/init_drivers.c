@@ -20,7 +20,7 @@ static void uart_stage1()
 
 static void uart_stage2()
 {
-	GICV3_init_irq(IMX8MP_IRQ_UART2, 0x80, GICV3_LEVEL_SENSITIVE,
+	GICV3_init_irq(&GIC_DRIVER, IMX8MP_IRQ_UART2, 0x80, GICV3_LEVEL_SENSITIVE,
 				   ARM_get_cpu_affinity());
 }
 

@@ -17,9 +17,20 @@
 
 MMIO_DECLARE_REG64_VALUE_STRUCT(GICR_TYPER_VALUE_STRUCT_NAME);
 
-MMIO_DECLARE_REG64_GETTER_N_BASE(GICV3, GICR_TYPER,
-								 GICR_TYPER_VALUE_STRUCT_NAME,
-								 GICV3_REDISTRIBUTOR_N_BASE, GICR_TYPER_OFFSET)
+static inline GICR_TYPER_VALUE_STRUCT_NAME GICV3_GICR_TYPER_read(uintptr base,
+																 size_t n)
+{
+	return (GICR_TYPER_VALUE_STRUCT_NAME){
+		.val = *((reg32_ptr)(GICV3_REDISTRIBUTOR_N_OFFSET(base, n) +
+							 (uintptr)(GICR_TYPER_OFFSET)))};
+}
+
+static inline void GICV3_GICR_TYPER_write(uintptr base, size_t n,
+										  GICR_TYPER_VALUE_STRUCT_NAME v)
+{
+	*((reg32_ptr)(GICV3_REDISTRIBUTOR_N_OFFSET(base, n) +
+				  (uintptr)(GICR_TYPER_OFFSET))) = v.val;
+}
 
 /* Helper */
 #define GICR_TYPER_DECLARE_BIT_FIELD_GETTER(bf_name, T)             \

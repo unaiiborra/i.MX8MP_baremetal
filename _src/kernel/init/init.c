@@ -2,6 +2,7 @@
 #include <boot/panic.h>
 #include <drivers/interrupts/gicv3/gicv3.h>
 #include <drivers/uart/uart.h>
+#include <kernel/devices/drivers.h>
 #include <kernel/init.h>
 #include <lib/stdint.h>
 
@@ -37,8 +38,8 @@ void kernel_init(void)
 		.debug = true,
 	});
 
-	GICV3_init_distributor();
-	GICV3_init_cpu(ARM_get_cpu_affinity().aff0);
+	GICV3_init_distributor(&GIC_DRIVER);
+	GICV3_init_cpu(&GIC_DRIVER, ARM_get_cpu_affinity().aff0);
 
 	for (kernel_initcall_t *fn = __kernel_init_stage1_start;
 		 fn < __kernel_init_stage1_end; fn++) {

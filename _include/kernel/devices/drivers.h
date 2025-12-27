@@ -2,6 +2,8 @@
 
 #include "device.h"
 
+extern const driver_handle GIC_DRIVER;
+
 extern const driver_handle UART1_DRIVER;
 extern const driver_handle UART2_DRIVER;
 extern const driver_handle UART3_DRIVER;

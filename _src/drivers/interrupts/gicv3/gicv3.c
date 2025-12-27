@@ -28,9 +28,9 @@ static inline void GICV3_arm_interface_enable(void)
 }
 
 /// If irq number is not valid panics
-static void GICV3_validate_spi_id(uint32 intid)
+static void GICV3_validate_spi_id(const driver_handle *h, uint32 intid)
 {
-	GicdTyper typer = GICV3_GICD_TYPER_read();
+	GicdTyper typer = GICV3_GICD_TYPER_read(h->base);
 	uint32 itlines = (uint32)GICV3_GICD_TYPER_ITLinesNumber_get(typer);
 
 	uint32 max_spi = (32 * (itlines + 1)) - 1;
@@ -38,26 +38,27 @@ static void GICV3_validate_spi_id(uint32 intid)
 	if (intid < 32 || intid > max_spi) PANIC("Invalid SPI INTID");
 }
 
-void GICV3_set_spi_group1ns(imx8mp_irq irq, bool v)
+void GICV3_set_spi_group1ns(const driver_handle *h, imx8mp_irq irq, bool v)
 {
 	// imx8mp irqs start from 32 as 0..31 in the gic are reserved
 	uint32 intid = irq + 32;
 
-	GICV3_validate_spi_id(intid);
+	GICV3_validate_spi_id(h, intid);
 
 	uint32 n = ((uint32)intid) / 32;
 	uint32 bit = ((uint32)intid) % 32;
 
-	GicdIgroupr igroupr = GICV3_GICD_IGROUPR_read(n);
+	GicdIgroupr igroupr = GICV3_GICD_IGROUPR_read(h->base, n);
 	GICV3_GICD_IGROUPR_BF_set(&igroupr, bit, v);
-	GICV3_GICD_IGROUPR_write(n, igroupr);
+	GICV3_GICD_IGROUPR_write(h->base, n, igroupr);
 }
 
-void GICV3_route_spi_to_cpu(imx8mp_irq irq, ARM_cpu_affinity affinity)
+void GICV3_route_spi_to_cpu(const driver_handle *h, imx8mp_irq irq,
+							ARM_cpu_affinity affinity)
 {
 	uint32 intid = irq + 32;
 
-	GICV3_validate_spi_id(intid);
+	GICV3_validate_spi_id(h, intid);
 
 	GicdIrouter r = {0};
 
@@ -68,116 +69,116 @@ void GICV3_route_spi_to_cpu(imx8mp_irq irq, ARM_cpu_affinity affinity)
 	GICV3_GICD_IROUTER_Aff1_set(&r, affinity.aff1);
 	GICV3_GICD_IROUTER_Aff0_set(&r, affinity.aff0);
 
-	GICV3_GICD_IROUTER_write(intid, r);
+	GICV3_GICD_IROUTER_write(h->base, intid, r);
 }
 
-void GICV3_route_spi_to_self(imx8mp_irq irq)
+void GICV3_route_spi_to_self(const driver_handle *h, imx8mp_irq irq)
 {
-	GICV3_route_spi_to_cpu(irq, ARM_get_cpu_affinity());
+	GICV3_route_spi_to_cpu(h, irq, ARM_get_cpu_affinity());
 }
 
-void GICV3_enable_spi(imx8mp_irq irq)
+void GICV3_enable_spi(const driver_handle *h, imx8mp_irq irq)
 {
 	uint32 intid = irq + 32;
 
-	GICV3_validate_spi_id(intid);
+	GICV3_validate_spi_id(h, intid);
 
 	uint32 n = ((uint32)intid) / 32;
 	uint32 bit = ((uint32)intid) % 32;
 
-	GICV3_GICD_ISENABLER_set_bit(n, bit);
+	GICV3_GICD_ISENABLER_set_bit(h->base, n, bit);
 }
 
-void GICV3_set_priority(imx8mp_irq irq, uint8 priority)
+void GICV3_set_priority(const driver_handle *h, imx8mp_irq irq, uint8 priority)
 {
 	uint32 intid = irq + 32;
 
-	GICV3_validate_spi_id(intid);
+	GICV3_validate_spi_id(h, intid);
 
 	uint32 n = ((uint32)intid) / 4;
 	uint32 byte_idx = ((uint32)intid) % 4;
 
-	GicdIpriority r = GICV3_GICD_IPRIORITYR_read(n);
+	GicdIpriority r = GICV3_GICD_IPRIORITYR_read(h->base, n);
 	GICV3_GICD_IPRIORITYR_BF_set(&r, byte_idx, priority);
-	GICV3_GICD_IPRIORITYR_write(n, r);
+	GICV3_GICD_IPRIORITYR_write(h->base, n, r);
 }
 
-void GICV3_set_edge_triggered(imx8mp_irq irq)
+void GICV3_set_edge_triggered(const driver_handle *h, imx8mp_irq irq)
 {
 	uint32 intid = irq + 32;
 
-	GICV3_validate_spi_id(intid);
+	GICV3_validate_spi_id(h, intid);
 
 	uint32 n = ((uint32)intid) / 16;
 	uint32 slot = ((uint32)intid) % 16;
 
-	GicdIcfgr r = GICV3_GICD_ICFGR_read(n);
-	GICV3_GICD_ICFGR_BF_set(&r, slot, 0b10);
-	GICV3_GICD_ICFGR_write(n, r);
+	GicdIcfgr r = GICV3_GICD_ICFGR_read(h->base, n);
+	GICV3_GICD_ICFGR_set(&r, slot, 0b10);
+	GICV3_GICD_ICFGR_write(h->base, n, r);
 }
 
-void GICV3_set_level_sensitive(imx8mp_irq irq)
+void GICV3_set_level_sensitive(const driver_handle *h, imx8mp_irq irq)
 {
 	uint32 intid = irq + 32;
 
-	GICV3_validate_spi_id(intid);
+	GICV3_validate_spi_id(h, intid);
 
 	uint32 n = ((uint32)intid) / 16;
 	uint32 slot = ((uint32)intid) % 16;
 
-	GicdIcfgr r = GICV3_GICD_ICFGR_read(n);
-	GICV3_GICD_ICFGR_BF_set(&r, slot, 0b00);
-	GICV3_GICD_ICFGR_write(n, r);
+	GicdIcfgr r = GICV3_GICD_ICFGR_read(h->base, n);
+	GICV3_GICD_ICFGR_set(&r, slot, 0b00);
+	GICV3_GICD_ICFGR_write(h->base, n, r);
 }
 
-void GICV3_wake_redistributor(size_t n)
+void GICV3_wake_redistributor(const driver_handle *h, size_t n)
 {
-	GicrWaker w = GICV3_GICR_WAKER_read(n);
+	GicrWaker w = GICV3_GICR_WAKER_read(h->base, n);
 	GICV3_GICR_WAKER_ProcessorSleep_set(&w, false);
-	GICV3_GICR_WAKER_write(n, w);
+	GICV3_GICR_WAKER_write(h->base, n, w);
 
 	bool asleep = true;
 
 	while (asleep) {
 		for (size_t i = 0; i < 5000; i++) asm volatile("nop");
 
-		GicrWaker r = GICV3_GICR_WAKER_read(n);
+		GicrWaker r = GICV3_GICR_WAKER_read(h->base, n);
 		asleep = GICV3_GICR_WAKER_ChildrenAsleep_get(r);
 	}
 }
 
-void GICV3_init_distributor(void)
+void GICV3_init_distributor(const driver_handle *h)
 {
-	GICV3_GICD_CTLR_write((GicdCtlr){.val = 0});  // disable
+	GICV3_GICD_CTLR_write(h->base, (GicdCtlr){.val = 0});  // disable
 	asm volatile("dsb sy");
 
 	// TODO: clean pending
 
 	GicdCtlr ctlr = {0};
 	GICV3_GICD_CTLR_EnableGrp1NS_set(&ctlr, true);
-	GICV3_GICD_CTLR_write(ctlr);
+	GICV3_GICD_CTLR_write(h->base, ctlr);
 
 	asm volatile("dsb sy");
 }
 
-void GICV3_init_cpu(size_t cpu)
+void GICV3_init_cpu(const driver_handle *h, size_t cpu)
 {
-	GICV3_wake_redistributor(cpu);
+	GICV3_wake_redistributor(h, cpu);
 	GICV3_arm_interface_enable();
 }
 
-void GICV3_init_irq(imx8mp_irq irq, uint8 priority, gicv3_irq_trigger trigger,
-					ARM_cpu_affinity cpu)
+void GICV3_init_irq(const driver_handle *h, imx8mp_irq irq, uint8 priority,
+					gicv3_irq_trigger trigger, ARM_cpu_affinity cpu)
 {
-	GICV3_set_spi_group1ns(irq, true);
+	GICV3_set_spi_group1ns(h, irq, true);
 
 	switch (trigger) {
 		case GICV3_LEVEL_SENSITIVE:
-			GICV3_set_level_sensitive(irq);
+			GICV3_set_level_sensitive(h, irq);
 			break;
 
 		case GICV3_EDGE_TRIGGERED:
-			GICV3_set_edge_triggered(irq);
+			GICV3_set_edge_triggered(h, irq);
 			break;
 
 		default:
@@ -185,27 +186,11 @@ void GICV3_init_irq(imx8mp_irq irq, uint8 priority, gicv3_irq_trigger trigger,
 			break;
 	}
 
-	GICV3_set_priority(irq, priority);
+	GICV3_set_priority(h, irq, priority);
 
-	GICV3_route_spi_to_cpu(irq, cpu);
+	GICV3_route_spi_to_cpu(h, irq, cpu);
 
-	GICV3_enable_spi(irq);
-}
-
-void uart_irq_init()
-{
-	imx8mp_irq uart_irq = IMX8MP_IRQ_UART2;
-
-	// Non secure group
-	GICV3_set_spi_group1ns(uart_irq, true);
-
-	GICV3_set_level_sensitive(uart_irq);
-
-	GICV3_set_priority(uart_irq, 0x80);
-
-	GICV3_route_spi_to_self(uart_irq);
-
-	GICV3_enable_spi(uart_irq);
+	GICV3_enable_spi(h, irq);
 }
 
 uint64 GICV3_get_intid_el1()

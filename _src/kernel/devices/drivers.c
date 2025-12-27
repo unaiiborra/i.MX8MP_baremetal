@@ -2,6 +2,7 @@
 #include <kernel/devices/drivers.h>
 
 #include "device_map.h"
+#include "kernel/devices/device.h"
 
 // UART1
 uart_state uart1_state;
@@ -29,4 +30,10 @@ uart_state uart4_state;
 const driver_handle UART4_DRIVER = {
 	.base = UART4_BASE,
 	.state = &uart4_state,
+};
+
+// GIC
+const driver_handle GIC_DRIVER = {
+	.base = GIC_BASE,
+	.state = (void *)0,
 };

@@ -9,14 +9,12 @@
 #include <lib/stdbool.h>
 #include <lib/stdint.h>
 
-#include "gicv3_macros.h"
-
 #define GICD_ISENABLER_OFFSET(n) (0x100UL + (4UL * n))
 
-static inline void GICV3_GICD_ISENABLER_set_bit(uint32 n, uint32 bit)
+static inline void GICV3_GICD_ISENABLER_set_bit(uintptr base, uint32 n,
+												uint32 bit)
 {
 	if (bit > 31) PANIC("GICD_ISENABLER: bit must be <= 31");
 
-	*((reg32_ptr)(GICV3_DISTRIBUTOR_BASE + GICD_ISENABLER_OFFSET(n))) =
-		(1UL << bit);
+	*((reg32_ptr)(base + GICD_ISENABLER_OFFSET(n))) = (1UL << bit);
 }
