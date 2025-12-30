@@ -50,3 +50,7 @@ void GICV3_ack_intid_el1(irq_id irq_token);
 
 void GICV3_init_irq(const driver_handle *h, irq_id irq, uint8 priority,
 					gicv3_irq_trigger trigger, ARM_cpu_affinity cpu);
+
+
+void GICV3_enable_ppi(const driver_handle *h, irq_id id,
+                      ARM_cpu_affinity cpu);

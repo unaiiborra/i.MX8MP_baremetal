@@ -10,6 +10,8 @@
 #include <kernel/irq/interrupts.h>
 #include <lib/stdmacros.h>
 
+#include "drivers/arm_generic_timer/arm_generic_timer.h"
+
 static void uart_stage0() { UART_init_stage0(&UART2_DRIVER); }
 
 static void uart_stage1()
@@ -49,3 +51,6 @@ static void tmu_stage2()
 KERNEL_INITCALL(tmu_stage0, KERNEL_INITCALL_STAGE0);
 KERNEL_INITCALL(tmu_stage1, KERNEL_INITCALL_STAGE1);
 KERNEL_INITCALL(tmu_stage2, KERNEL_INITCALL_STAGE2);
+
+static void agt_stage0() { AGT_init_stage0(&AGT0_DRIVER); }
+KERNEL_INITCALL(agt_stage0, KERNEL_INITCALL_STAGE0);

@@ -3,6 +3,8 @@
 #include <lib/lock/spinlock.h>
 #include <lib/stdint.h>
 
+
+void AGT_init_stage0(const driver_handle *h);
 void AGT_handle_irq(const driver_handle *h);
 
 /*

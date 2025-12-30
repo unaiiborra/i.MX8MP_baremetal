@@ -8,17 +8,24 @@
 #include <lib/stdmacros.h>
 #include <lib/string.h>
 
+#include "arm/cpu.h"
 #include "drivers/arm_generic_timer/arm_generic_timer.h"
 #include "kernel/devices/drivers.h"
 
-extern uint64 _ARM_ICC_SRE_EL2();
-extern uint64 _ARM_HCR_EL2();
-extern void _switch_to_el1();
+static inline uint64 sec_to_ns(uint64 sec) { return sec * 1'000'000'000ULL; }
+
+static void testcb(void *)
+{
+	UART_puts_sync(&UART2_DRIVER, "a\n");
+	AGT_timer_schedule_delta(&AGT0_DRIVER, sec_to_ns(1), testcb, NULL);
+}
 
 // Main function of the kernel, called by the bootloader (/boot/boot.S)
 _Noreturn void kernel_entry()
 {
 	kernel_init();
+
+	GICV3_enable_ppi(&GIC_DRIVER, irq_id_new(27), ARM_get_cpu_affinity());
 
 	UART_puts(&UART2_DRIVER, "Hello world!\n\r");
 
@@ -35,7 +42,7 @@ _Noreturn void kernel_entry()
 			UART_puts(&UART2_DRIVER, buf1);
 			UART_puts(&UART2_DRIVER, "\n\r");
 
-			AGT_timer_schedule_delta(&AGT0_DRIVER, 100, NULL, NULL);
+			AGT_timer_schedule_delta(&AGT0_DRIVER, sec_to_ns(1), testcb, NULL);
 		}
 	}
 

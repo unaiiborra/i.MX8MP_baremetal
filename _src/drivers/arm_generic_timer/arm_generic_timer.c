@@ -4,6 +4,7 @@
 #include <lib/lock/spinlock_irq.h>
 #include <lib/stdmacros.h>
 
+#include "kernel/devices/device.h"
 #include "lib/lock/_lock_types.h"
 #include "lib/stdint.h"
 
@@ -55,9 +56,9 @@ static inline agt_state *get_state(const driver_handle *h)
 }
 
 // ENABLE (bit 0)
-#define timer_is_enabled() ((bool)(_ARM_CNTV_CTL_EL0_get() & 0b1ul))
-#define enable_timer() (_ARM_CNTV_CTL_EL0_set(1))
-#define disable_timer() (_ARM_CNTV_CTL_EL0_set(0))
+#define timer_is_enabled() (bool)(_ARM_CNTV_CTL_EL0_get() & 0b1ul)
+#define enable_timer() _ARM_CNTV_CTL_EL0_set(1)
+#define disable_timer() _ARM_CNTV_CTL_EL0_set(0)
 
 // ISTATUS (bit 2)
 #define timer_fired() ((bool)((_ARM_CNTV_CTL_EL0_get() >> 2) & 0b1ul))
@@ -227,4 +228,20 @@ void AGT_handle_irq(const driver_handle *h)
 									state->defer_cb.under_cb_arg);
 		}
 	}
+}
+
+void AGT_init_stage0(const driver_handle *h)
+{
+	agt_state *state = get_state(h);
+
+	state->lock.slock = 0;	// open
+	state->timer_cb = NULL;
+	state->arg = NULL;
+	state->timer_fired = false;
+	// locked (starts locked as it opens when it is under a callback)
+	state->defer_cb.under_callback_gate.slock = 1;
+	state->defer_cb.under_cb_scheduled = false;
+	state->defer_cb.under_cb_timer_cb = NULL;
+	state->defer_cb.under_cb_arg = NULL;
+	state->defer_cb.cycles_v = 0;
 }
