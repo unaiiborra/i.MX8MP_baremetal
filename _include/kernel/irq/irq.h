@@ -1,7 +1,7 @@
 #pragma once
 
 #include <kernel/irq/interrupts.h>
+#include <drivers/interrupts/gicv3/gicv3.h>
 
-typedef void (*irq_handler_t)(void);
 
-void kernel_handle_irq(imx8mp_irq irqid);
+void kernel_handle_irq(irq_id irq);

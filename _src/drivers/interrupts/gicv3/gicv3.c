@@ -28,37 +28,33 @@ static inline void GICV3_arm_interface_enable(void)
 }
 
 /// If irq number is not valid panics
-static void GICV3_validate_spi_id(const driver_handle *h, uint32 intid)
+static void GICV3_validate_spi_id(const driver_handle *h, irq_id id)
 {
 	GicdTyper typer = GICV3_GICD_TYPER_read(h->base);
 	uint32 itlines = (uint32)GICV3_GICD_TYPER_ITLinesNumber_get(typer);
 
 	uint32 max_spi = (32 * (itlines + 1)) - 1;
 
-	if (intid < 32 || intid > max_spi) PANIC("Invalid SPI INTID");
+	if (id.n < 32 || id.n > max_spi) PANIC("Invalid SPI INTID");
 }
 
-void GICV3_set_spi_group1ns(const driver_handle *h, imx8mp_irq irq, bool v)
+void GICV3_set_spi_group1ns(const driver_handle *h, irq_id id, bool v)
 {
 	// imx8mp irqs start from 32 as 0..31 in the gic are reserved
-	uint32 intid = irq + 32;
+	GICV3_validate_spi_id(h, id);
 
-	GICV3_validate_spi_id(h, intid);
-
-	uint32 n = ((uint32)intid) / 32;
-	uint32 bit = ((uint32)intid) % 32;
+	uint32 n = ((uint32)id.n) / 32;
+	uint32 bit = ((uint32)id.n) % 32;
 
 	GicdIgroupr igroupr = GICV3_GICD_IGROUPR_read(h->base, n);
 	GICV3_GICD_IGROUPR_BF_set(&igroupr, bit, v);
 	GICV3_GICD_IGROUPR_write(h->base, n, igroupr);
 }
 
-void GICV3_route_spi_to_cpu(const driver_handle *h, imx8mp_irq irq,
+void GICV3_route_spi_to_cpu(const driver_handle *h, irq_id id,
 							ARM_cpu_affinity affinity)
 {
-	uint32 intid = irq + 32;
-
-	GICV3_validate_spi_id(h, intid);
+	GICV3_validate_spi_id(h, id);
 
 	GicdIrouter r = {0};
 
@@ -69,62 +65,54 @@ void GICV3_route_spi_to_cpu(const driver_handle *h, imx8mp_irq irq,
 	GICV3_GICD_IROUTER_Aff1_set(&r, affinity.aff1);
 	GICV3_GICD_IROUTER_Aff0_set(&r, affinity.aff0);
 
-	GICV3_GICD_IROUTER_write(h->base, intid, r);
+	GICV3_GICD_IROUTER_write(h->base, id.n, r);
 }
 
-void GICV3_route_spi_to_self(const driver_handle *h, imx8mp_irq irq)
+void GICV3_route_spi_to_self(const driver_handle *h, irq_id id)
 {
-	GICV3_route_spi_to_cpu(h, irq, ARM_get_cpu_affinity());
+	GICV3_route_spi_to_cpu(h, id, ARM_get_cpu_affinity());
 }
 
-void GICV3_enable_spi(const driver_handle *h, imx8mp_irq irq)
+void GICV3_enable_spi(const driver_handle *h, irq_id id)
 {
-	uint32 intid = irq + 32;
+	GICV3_validate_spi_id(h, id);
 
-	GICV3_validate_spi_id(h, intid);
-
-	uint32 n = ((uint32)intid) / 32;
-	uint32 bit = ((uint32)intid) % 32;
+	uint32 n = ((uint32)id.n) / 32;
+	uint32 bit = ((uint32)id.n) % 32;
 
 	GICV3_GICD_ISENABLER_set_bit(h->base, n, bit);
 }
 
-void GICV3_set_priority(const driver_handle *h, imx8mp_irq irq, uint8 priority)
+void GICV3_set_priority(const driver_handle *h, irq_id id, uint8 priority)
 {
-	uint32 intid = irq + 32;
+	GICV3_validate_spi_id(h, id);
 
-	GICV3_validate_spi_id(h, intid);
-
-	uint32 n = ((uint32)intid) / 4;
-	uint32 byte_idx = ((uint32)intid) % 4;
+	uint32 n = ((uint32)id.n) / 4;
+	uint32 byte_idx = ((uint32)id.n) % 4;
 
 	GicdIpriority r = GICV3_GICD_IPRIORITYR_read(h->base, n);
 	GICV3_GICD_IPRIORITYR_BF_set(&r, byte_idx, priority);
 	GICV3_GICD_IPRIORITYR_write(h->base, n, r);
 }
 
-void GICV3_set_edge_triggered(const driver_handle *h, imx8mp_irq irq)
+void GICV3_set_edge_triggered(const driver_handle *h, irq_id id)
 {
-	uint32 intid = irq + 32;
+	GICV3_validate_spi_id(h, id);
 
-	GICV3_validate_spi_id(h, intid);
-
-	uint32 n = ((uint32)intid) / 16;
-	uint32 slot = ((uint32)intid) % 16;
+	uint32 n = ((uint32)id.n) / 16;
+	uint32 slot = ((uint32)id.n) % 16;
 
 	GicdIcfgr r = GICV3_GICD_ICFGR_read(h->base, n);
 	GICV3_GICD_ICFGR_set(&r, slot, 0b10);
 	GICV3_GICD_ICFGR_write(h->base, n, r);
 }
 
-void GICV3_set_level_sensitive(const driver_handle *h, imx8mp_irq irq)
+void GICV3_set_level_sensitive(const driver_handle *h, irq_id id)
 {
-	uint32 intid = irq + 32;
+	GICV3_validate_spi_id(h, id);
 
-	GICV3_validate_spi_id(h, intid);
-
-	uint32 n = ((uint32)intid) / 16;
-	uint32 slot = ((uint32)intid) % 16;
+	uint32 n = ((uint32)id.n) / 16;
+	uint32 slot = ((uint32)id.n) % 16;
 
 	GicdIcfgr r = GICV3_GICD_ICFGR_read(h->base, n);
 	GICV3_GICD_ICFGR_set(&r, slot, 0b00);
@@ -167,18 +155,18 @@ void GICV3_init_cpu(const driver_handle *h, size_t cpu)
 	GICV3_arm_interface_enable();
 }
 
-void GICV3_init_irq(const driver_handle *h, imx8mp_irq irq, uint8 priority,
+void GICV3_init_irq(const driver_handle *h, irq_id id, uint8 priority,
 					gicv3_irq_trigger trigger, ARM_cpu_affinity cpu)
 {
-	GICV3_set_spi_group1ns(h, irq, true);
+	GICV3_set_spi_group1ns(h, id, true);
 
 	switch (trigger) {
 		case GICV3_LEVEL_SENSITIVE:
-			GICV3_set_level_sensitive(h, irq);
+			GICV3_set_level_sensitive(h, id);
 			break;
 
 		case GICV3_EDGE_TRIGGERED:
-			GICV3_set_edge_triggered(h, irq);
+			GICV3_set_edge_triggered(h, id);
 			break;
 
 		default:
@@ -186,33 +174,16 @@ void GICV3_init_irq(const driver_handle *h, imx8mp_irq irq, uint8 priority,
 			break;
 	}
 
-	GICV3_set_priority(h, irq, priority);
+	GICV3_set_priority(h, id, priority);
 
-	GICV3_route_spi_to_cpu(h, irq, cpu);
+	GICV3_route_spi_to_cpu(h, id, cpu);
 
-	GICV3_enable_spi(h, irq);
+	GICV3_enable_spi(h, id);
 }
 
-uint64 GICV3_get_intid_el1()
+irq_id GICV3_get_intid_el1()
 {
-	return _GICV3_ARM_ICC_IAR1_EL1_read() & 0xFFFFFF;
+	return irq_id_new(_GICV3_ARM_ICC_IAR1_EL1_read() & 0xFFFFFF);
 }
 
-imx8mp_irq GICV3_imx8mp_irq_from_intid(uint64 intid)
-{
-#if TEST
-	if (ARM_get_exception_level() != 1)
-		PANIC("Reading EL1 source while not being in EL1");
-
-	if (intid <= 32 || intid > IMX8MP_IRQ_SIZE + 32) {
-		PANIC("UNHANDLED IRQ");
-	}
-#endif
-
-	return (imx8mp_irq)(intid - 32);
-}
-
-void GICV3_ack_intid_el1(uint64 irq_token)
-{
-	_GICV3_ARM_ICC_EOIR1_EL1_write(irq_token);
-}
+void GICV3_ack_intid_el1(irq_id id) { _GICV3_ARM_ICC_EOIR1_EL1_write(id.n); }

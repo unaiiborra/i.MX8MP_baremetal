@@ -6,7 +6,10 @@
 #include <kernel/irq/irq.h>
 #include <lib/stdint.h>
 
+#include "drivers/interrupts/gicv3/gicv3.h"
 #include "drivers/tmu/tmu.h"
+
+typedef void (*irq_handler_t)(void);
 
 static irq_handler_t KERNEL_IRQ_HANDLER_TABLE[IMX8MP_IRQ_SIZE];
 
@@ -33,4 +36,4 @@ static void init_irq_handler_table()
 
 KERNEL_INITCALL(init_irq_handler_table, KERNEL_INITCALL_STAGE0);
 
-void kernel_handle_irq(imx8mp_irq irqid) { KERNEL_IRQ_HANDLER_TABLE[irqid](); }
+void kernel_handle_irq(irq_id irq) { KERNEL_IRQ_HANDLER_TABLE[irq.n](); }

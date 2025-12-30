@@ -22,8 +22,8 @@ static void uart_stage1()
 
 static void uart_stage2()
 {
-	GICV3_init_irq(&GIC_DRIVER, IMX8MP_IRQ_UART2, 0x80, GICV3_LEVEL_SENSITIVE,
-				   ARM_get_cpu_affinity());
+	GICV3_init_irq(&GIC_DRIVER, irq_id_new(IMX8MP_IRQ_UART2), 0x80,
+				   GICV3_LEVEL_SENSITIVE, ARM_get_cpu_affinity());
 }
 
 KERNEL_INITCALL(uart_stage0, KERNEL_INITCALL_STAGE0);
@@ -42,7 +42,7 @@ static void tmu_stage1() { TMU_init_stage1(&TMU_DRIVER); }
 
 static void tmu_stage2()
 {
-	GICV3_init_irq(&GIC_DRIVER, IMX8MP_IRQ_ANAMIX_TEMP, 0x0,
+	GICV3_init_irq(&GIC_DRIVER, irq_id_new(IMX8MP_IRQ_ANAMIX_TEMP), 0x0,
 				   GICV3_LEVEL_SENSITIVE, ARM_get_cpu_affinity());
 }
 
