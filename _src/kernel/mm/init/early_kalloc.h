@@ -3,12 +3,13 @@
 #include <lib/mem.h>
 #include <lib/stdint.h>
 
-typedef struct
-{
-    p_uintptr addr;
-    size_t blocks;
-    const char* tag;
-    bool permanent;
+#include "arm/mmu/mmu.h"
+
+typedef struct {
+    _Alignas(16) p_uintptr addr;
+    _Alignas(16) size_t blocks;
+    _Alignas(16) const char* tag;
+    _Alignas(16) bool permanent;
 } memblock;
 
 
@@ -31,56 +32,46 @@ void early_kalloc_get_memblocks(memblock** memblocks, size_t* memblock_count);
 
 #    include "kernel/devices/drivers.h"
 #    include "lib/string.h"
-#    include "lib/unit/mem.h"
 
-inline void early_kalloc_test()
+inline void early_kalloc_debug()
 {
-    early_kalloc_init();
+    memblock* memblcks;
+    size_t memblck_count;
+    early_kalloc_get_memblocks(&memblcks, &memblck_count);
 
-    __attribute__((unused)) p_uintptr test = early_kalloc(20, "test1", true);
-    __attribute__((unused)) p_uintptr test2 = early_kalloc(MEM_GiB, "test2", true);
+    for (size_t i = 0; i < memblck_count; i++) {
+        char buf[200];
 
-    for (size_t a = 0; a < 3; a++)
-    {
-        memblock* memblcks;
-        size_t memblck_count;
-        early_kalloc_get_memblocks(&memblcks, &memblck_count);
+        UART_puts(&UART2_DRIVER, "memblock[");
+        stdint_to_ascii((STDINT_UNION) {.uint64 = i}, STDINT_UINT64, buf, sizeof(buf),
+                        STDINT_BASE_REPR_DEC);
+        UART_puts(&UART2_DRIVER, buf);
+        UART_puts(&UART2_DRIVER, "]\n\r");
 
-        for (size_t i = 0; i < memblck_count; i++)
-        {
-            char buf[200];
+        UART_puts(&UART2_DRIVER, "  addr      = ");
+        stdint_to_ascii((STDINT_UNION) {.uint64 = memblcks[i].addr}, STDINT_UINT64, buf,
+                        sizeof(buf), STDINT_BASE_REPR_HEX);
+        UART_puts(&UART2_DRIVER, buf);
+        UART_puts(&UART2_DRIVER, "\n\r");
 
-            UART_puts(&UART2_DRIVER, "memblock[");
-            stdint_to_ascii((STDINT_UNION) {.uint64 = i}, STDINT_UINT64, buf, sizeof(buf),
-                            STDINT_BASE_REPR_DEC);
-            UART_puts(&UART2_DRIVER, buf);
-            UART_puts(&UART2_DRIVER, "]\n\r");
+        UART_puts(&UART2_DRIVER, "  blocks    = ");
+        stdint_to_ascii((STDINT_UNION) {.uint64 = memblcks[i].blocks}, STDINT_UINT64, buf,
+                        sizeof(buf), STDINT_BASE_REPR_DEC);
+        UART_puts(&UART2_DRIVER, buf);
+        UART_puts(&UART2_DRIVER, "\n\r");
 
-            UART_puts(&UART2_DRIVER, "  addr      = 0x");
-            stdint_to_ascii((STDINT_UNION) {.uint64 = memblcks[i].addr}, STDINT_UINT64, buf,
-                            sizeof(buf), STDINT_BASE_REPR_HEX);
-            UART_puts(&UART2_DRIVER, buf);
-            UART_puts(&UART2_DRIVER, "\n\r");
+        UART_puts(&UART2_DRIVER, "  size      = ");
+        stdint_to_ascii((STDINT_UNION) {.uint64 = memblcks[i].blocks * MMU_GRANULARITY_4KB},
+                        STDINT_UINT64, buf, sizeof(buf), STDINT_BASE_REPR_DEC);
+        UART_puts(&UART2_DRIVER, buf);
+        UART_puts(&UART2_DRIVER, " bytes\n\r");
 
-            UART_puts(&UART2_DRIVER, "  blocks    = ");
-            stdint_to_ascii((STDINT_UNION) {.uint64 = memblcks[i].blocks}, STDINT_UINT64, buf,
-                            sizeof(buf), STDINT_BASE_REPR_DEC);
-            UART_puts(&UART2_DRIVER, buf);
-            UART_puts(&UART2_DRIVER, "\n\r");
+        UART_puts(&UART2_DRIVER, "  permanent = ");
+        UART_puts(&UART2_DRIVER, memblcks[i].permanent ? "true\n\r" : "false\n\r");
 
-            UART_puts(&UART2_DRIVER, "  size      = ");
-            stdint_to_ascii((STDINT_UNION) {.uint64 = memblcks[i].blocks * MMU_GRANULARITY_4KB},
-                            STDINT_UINT64, buf, sizeof(buf), STDINT_BASE_REPR_DEC);
-            UART_puts(&UART2_DRIVER, buf);
-            UART_puts(&UART2_DRIVER, " bytes\n\r");
-
-            UART_puts(&UART2_DRIVER, "  permanent = ");
-            UART_puts(&UART2_DRIVER, memblcks[i].permanent ? "true\n\r" : "false\n\r");
-
-            UART_puts(&UART2_DRIVER, "  tag       = ");
-            UART_puts(&UART2_DRIVER, memblcks[i].tag ? memblcks[i].tag : "(null)");
-            UART_puts(&UART2_DRIVER, "\n\r\n\r");
-        }
+        UART_puts(&UART2_DRIVER, "  tag       = ");
+        UART_puts(&UART2_DRIVER, memblcks[i].tag ? memblcks[i].tag : "(null)");
+        UART_puts(&UART2_DRIVER, "\n\r\n\r");
     }
 }
 #else

@@ -2,4 +2,7 @@
 
 #define loop while (1)
 
-#define NULL ((void *)0)
+#define NULL ((void*)0)
+
+
+#define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))

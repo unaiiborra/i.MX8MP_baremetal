@@ -24,7 +24,7 @@ p_uintptr early_kalloc(size_t bytes, const char* tag, bool permanent);
 
 extern void _secondary_entry(void);
 void early_kalloc_init();
-extern void early_kalloc_test();
+extern void early_kalloc_debug();
 
 
 static inline size_t mmu_bd_cover_bytes(mmu_granularity g, mmu_tbl_level l)
@@ -44,8 +44,7 @@ _Noreturn void kernel_entry()
 {
     ARM_cpu_affinity aff = ARM_get_cpu_affinity();
 
-    if (aff.aff0 == 0)
-    {
+    if (aff.aff0 == 0) {
         kernel_init();
 
 

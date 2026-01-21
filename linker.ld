@@ -78,8 +78,8 @@ SECTIONS {
         __stacks_el1_end = .;
     } > DDR
 
-    /* aligned to 2MiB pages, 1GiB size */
-    .kernel_mem (NOLOAD) : ALIGN(0x100000 * 2) {
+    /* aligned to 4MiB pages, 1GiB size */
+    .kernel_mem (NOLOAD) : ALIGN(0x1000 * 4) {
         __kernel_mem_start = .;
         . += 0x40000000;
         __kernel_mem_end = .;

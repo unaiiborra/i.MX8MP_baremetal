@@ -15,23 +15,20 @@ extern uint32 PANIC_REASON;
 
 extern uint64 PANIC_REGISTERS[32];
 
-typedef enum
-{
+typedef enum {
     PANIC_REASON_UNDEFINED = 0,
     PANIC_REASON_EXCEPTION = 1,
     PANIC_REASON_MANUAL_ABORT = 2,
     PANIC_REASON_RUST_PANIC = 3,
 } panic_reason;
 
-typedef struct
-{
+typedef struct {
     char* file;
     uint32 line;
     uint32 col;
 } panic_location;
 
-typedef struct
-{
+typedef struct {
     const char* message;
     panic_location location;
     panic_reason panic_reason;
@@ -68,9 +65,9 @@ _Noreturn void panic();
 
 #define ASSERT(...) GET_ASSERT(__VA_ARGS__, _ASSERT2, _ASSERT1)(__VA_ARGS__)
 #ifdef DEBUG
-#    define DEBUBG_ASSERT(...) GET_ASSERT(__VA_ARGS__, _ASSERT2, _DEBUG_ASSERT1)(__VA_ARGS__)
+#    define DEBUG_ASSERT(...) GET_ASSERT(__VA_ARGS__, _ASSERT2, _DEBUG_ASSERT1)(__VA_ARGS__)
 #else
-#    define DEBUBG_ASSERT(...)
+#    define DEBUG_ASSERT(...)
 #endif
 
 

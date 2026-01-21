@@ -3,6 +3,7 @@
 
 #include "arm/mmu/mmu.h"
 #include "boot/panic.h"
+#include "lib/lock/_lock_types.h"
 #include "lib/mem.h"
 #include "lib/stdint.h"
 #include "mmu_pd.h"
@@ -28,7 +29,7 @@ static inline mmu_tbl_level max_level(mmu_granularity g)
 }
 
 
-static inline size_t tbl_entries_(mmu_granularity g)
+static inline size_t tbl_entries(mmu_granularity g)
 {
     return g / sizeof(mmu_hw_pd);
 }
@@ -41,7 +42,7 @@ static inline uint64 tbl_alignment(mmu_granularity g)
 
 static inline mmu_tbl tbl0_from_handle(mmu_handle h)
 {
-    DEBUBG_ASSERT(h.tbl0_ && ((p_uintptr)h.tbl0_ % tbl_alignment(h.g_) == 0));
+    DEBUG_ASSERT(h.tbl0_ && ((p_uintptr)h.tbl0_ % tbl_alignment(h.g_) == 0));
 
     return (mmu_tbl) {.pds = h.tbl0_};
 }
@@ -70,22 +71,20 @@ static inline size_t table_index(p_uintptr va, mmu_granularity g, mmu_tbl_level 
 }
 
 
-static inline size_t bd_cover_bytes_(mmu_granularity g, mmu_tbl_level l)
+static inline size_t pd_cover_bytes(mmu_granularity g, mmu_tbl_level l)
 {
     size_t page_bits = log2_floor_u64(g);
     size_t index_bits = page_bits - 3;
 
-    size_t max_level = (g == MMU_GRANULARITY_64KB) ? MMU_TBL_LV2 : MMU_TBL_LV3;
+    ASSERT(l <= max_level(g));
 
-    ASSERT(l <= max_level);
-
-    return 1ULL << (page_bits + index_bits * (max_level - l));
+    return 1ULL << (page_bits + index_bits * (max_level(g) - l));
 }
 
 
 static inline void tbl_init_null(mmu_tbl tbl, mmu_granularity g)
 {
-    size_t entries = tbl_entries_(g);
+    size_t entries = tbl_entries(g);
 
     for (size_t i = 0; i < entries; i++)
         tbl.pds[i].v = 0;
@@ -93,12 +92,12 @@ static inline void tbl_init_null(mmu_tbl tbl, mmu_granularity g)
 
 
 static inline mmu_tbl alloc_tbl(mmu_alloc alloc, mmu_granularity g, bool init_null,
-                                mmu_map_ctx* ctx)
+                                mmu_op_info* info)
 {
-    void* addr = alloc(sizeof(mmu_hw_pd) * tbl_entries_(g), tbl_alignment(g));
+    void* addr = alloc(sizeof(mmu_hw_pd) * tbl_entries(g), tbl_alignment(g));
 
-    if (ctx)
-        ctx->alocated_tbls++;
+    if (info)
+        info->alocated_tbls++;
 
     ASSERT((uintptr)addr % tbl_alignment(g) == 0);
 
@@ -130,7 +129,7 @@ static inline mmu_cfg cfg_from_pd(mmu_hw_pd pd)
 /// divides a block into a next level table and updates the parent. Returns the created table (of a
 /// lower level)
 static inline mmu_tbl split_block(mmu_handle h, mmu_tbl parent, size_t index, mmu_tbl_level l,
-                                  mmu_map_ctx* ctx)
+                                  mmu_op_info* info)
 {
     mmu_granularity g = h.g_;
     mmu_alloc alloc = h.alloc_;
@@ -138,21 +137,34 @@ static inline mmu_tbl split_block(mmu_handle h, mmu_tbl parent, size_t index, mm
     mmu_hw_pd old = parent.pds[index];
     mmu_cfg cfg = cfg_from_pd(old);
     p_uintptr pa = pd_get_output_address(old, g);
-    size_t new_l_bytes = bd_cover_bytes_(g, l + 1);
+    size_t new_l_bytes = pd_cover_bytes(g, l + 1);
 
     ASSERT(l < max_level(g));
     ASSERT(pd_get_type(old) == MMU_PD_BLOCK);
-    ASSERT(pa % bd_cover_bytes_(g, l) == 0);
+    ASSERT(pa % pd_cover_bytes(g, l) == 0);
 
 
-    mmu_tbl new_tbl = alloc_tbl(alloc, g, false, ctx);
+    mmu_tbl new_tbl = alloc_tbl(alloc, g, false, info);
 
     // create the new blocks
-    for (size_t i = 0; i < tbl_entries_(g); i++)
+    for (size_t i = 0; i < tbl_entries(g); i++)
         new_tbl.pds[i] = bd_build(cfg, pa + (i * new_l_bytes), g);
 
     // set the new table
     parent.pds[index] = td_build(new_tbl, g);
 
     return new_tbl;
+}
+
+
+static inline bool tbl_is_null(mmu_tbl tbl, mmu_granularity g)
+{
+    bool r = true;
+    for (size_t i = 0; i < tbl_entries(g); i++)
+        if (pd_get_valid(tbl.pds[i])) {
+            r = false;
+            break;
+        }
+
+    return r;
 }

@@ -8,9 +8,12 @@
 #include "mmu_types.h"
 
 
+#define NULL_PD (mmu_hw_pd) {.v = 0}
+
+
 static inline mmu_hw_pd mmu_tbl_get_pd(mmu_tbl tbl, size_t i)
 {
-    DEBUBG_ASSERT(tbl.pds, "null provided table");
+    DEBUG_ASSERT(tbl.pds, "null provided table");
 
     return tbl.pds[i];
 }
@@ -18,8 +21,7 @@ static inline mmu_hw_pd mmu_tbl_get_pd(mmu_tbl tbl, size_t i)
 
 static inline uint64 mmu_granularity_shift(mmu_granularity g)
 {
-    switch (g)
-    {
+    switch (g) {
         case MMU_GRANULARITY_4KB:
             return 12;
         case MMU_GRANULARITY_16KB:
@@ -197,16 +199,14 @@ static inline void pd_set_output_address(mmu_hw_pd* pd, uint64 output_address,
 {
     const uint64 pa_bit_n = output_address_bit_n_(granularity);
 
-    if (output_address >= (1ULL << pa_bit_n))
-    {
+    if (output_address >= (1ULL << pa_bit_n)) {
 #ifdef TEST
         PANIC("pd_set_output_address: invalid output address, out of granularity");
 #endif
         return;
     }
 
-    if (output_address % granularity != 0)
-    {
+    if (output_address % granularity != 0) {
 #ifdef TEST
         PANIC("pd_set_output_address: invalid output address, not aligned to granularity");
 #endif

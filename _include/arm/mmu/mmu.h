@@ -8,8 +8,7 @@
 #include <lib/unit/mem.h>
 
 
-typedef enum
-{
+typedef enum {
     MMU_GRANULARITY_4KB = 4 * MEM_KiB,
     MMU_GRANULARITY_16KB = 16 * MEM_KiB,
     MMU_GRANULARITY_64KB = 64 * MEM_KiB,
@@ -20,8 +19,7 @@ typedef void* (*mmu_alloc)(size_t bytes, size_t alignment);
 typedef void (*mmu_free)(void* addr);
 
 
-typedef struct
-{
+typedef struct {
     void* tbl0_;
     mmu_granularity g_;
 
@@ -32,16 +30,14 @@ typedef struct
 } mmu_handle;
 
 
-typedef enum
-{
+typedef enum {
     MMU_AP_EL0_NONE_EL1_RW = 0b00,
     MMU_AP_EL0_RW_EL1_RW = 0b01,
     MMU_AP_EL0_NONE_EL1_RO = 0b10,
     MMU_AP_EL0_RO_EL1_RO = 0b11,
 } mmu_access_permission;
 
-typedef struct
-{
+typedef struct {
     uint8 attr_index;
     mmu_access_permission ap;
     uint8 shareability;
@@ -55,13 +51,13 @@ typedef struct
 } mmu_cfg;
 
 
-typedef struct
-{
+typedef struct {
 #ifdef DEBUG
-    size_t recursion_depth;
+    size_t iters;
 #endif
     size_t alocated_tbls;
-} mmu_map_ctx;
+    size_t freed_tbls;
+} mmu_op_info;
 
 
 // initializes the private structures needed for mmu control. Does not activate the mmu
@@ -76,7 +72,13 @@ void mmu_activate(mmu_handle h, bool d_cache, bool i_cache, bool align_trap);
 
 
 bool mmu_map(mmu_handle h, v_uintptr virt, p_uintptr phys, size_t size, mmu_cfg cfg,
-             mmu_map_ctx* ctx);
+             mmu_op_info* info);
 
-bool mmu_p_unmap(mmu_handle h, p_uintptr phys, size_t size);
-bool mmu_v_unmap(mmu_handle h, v_uintptr virt, size_t size);
+bool mmu_p_unmap(mmu_handle h, p_uintptr phys, size_t size, mmu_op_info* info);
+bool mmu_unmap(mmu_handle h, v_uintptr virt, size_t size, mmu_op_info* info);
+
+
+// debug
+void mmu_debug_dump(mmu_handle h);
+
+void mmu_stress_test(mmu_handle h, mmu_cfg cfg, v_uintptr va_start, v_uintptr va_end);

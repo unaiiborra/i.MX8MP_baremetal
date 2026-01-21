@@ -14,6 +14,7 @@ uintptr mm_info_ddr_start(void);
 uintptr mm_info_ddr_end(void);
 
 uintptr mm_info_kernel_start(void);
+size_t mm_info_kernel_size(void);
 
 size_t mm_info_page_count(void);
 

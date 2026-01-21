@@ -1,2 +1,2 @@
-OPT_LEVEL 	= -O0
-DEFINES     += -DSTD
+OPT_LEVEL 	= -O2
+DEFINES     += -DSTD -g3

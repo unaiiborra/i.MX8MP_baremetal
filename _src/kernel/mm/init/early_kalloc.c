@@ -18,19 +18,16 @@
 #define MEMBLOCK_SIZE MMU_GRANULARITY_4KB
 
 
-static spinlock_t early_kallock_lock_;
+_Alignas(16) static spinlock_t early_kallock_lock_;
 
 
-// ddr_size: the soc supported max ddr size, not the actual implemented one
+_Alignas(16) static size_t memblock_struct_count_;
+_Alignas(16) static memblock* next_memblock_;
+_Alignas(16) static memblock* memblocks_start_;
 
+_Alignas(16) static uintptr current_phys_;
 
-static size_t memblock_struct_count_;
-static memblock* next_memblock_;
-static memblock* memblocks_start_;
-
-static uintptr current_phys_;
-
-static bool early_kalloc_stage_ended_;
+_Alignas(16) static bool early_kalloc_stage_ended_;
 
 
 void early_kalloc_init()
@@ -42,7 +39,7 @@ void early_kalloc_init()
     memblocks_start_ = (memblock*)(mm_info_ddr_end() - sizeof(memblock));
     next_memblock_ = memblocks_start_;
 
-    current_phys_ = mm_info_kernel_start();
+    current_phys_ = 0;
 
     spinlock_init(&early_kallock_lock_);
 }
@@ -61,6 +58,7 @@ static void UNLOCKED_early_kalloc_(void** addr, size_t bytes, const char* tag, b
 
     ASSERT(next_phys <= next_meta, "early_kalloc has no more physical memory");
 
+
     *next_memblock_ = (memblock) {
         .addr = current_phys_,
         .blocks = blocks,
@@ -68,13 +66,14 @@ static void UNLOCKED_early_kalloc_(void** addr, size_t bytes, const char* tag, b
         .permanent = permanent,
     };
 
+    
     *addr = (void*)next_memblock_->addr;
 
     memblock_struct_count_++;
     current_phys_ += blocks * MEMBLOCK_SIZE;
     next_memblock_--; // allocates its own memory structure downwards from ram end
 
-    DEBUBG_ASSERT(current_phys_ % MEMBLOCK_SIZE == 0);
+    DEBUG_ASSERT(current_phys_ % MEMBLOCK_SIZE == 0);
 }
 
 
@@ -126,7 +125,7 @@ void early_kalloc_get_memblocks(memblock** memblocks, size_t* memblock_count)
         *memblocks = memblocks_start_;
 
         early_kalloc_stage_ended_ = true;
-    }
 
-    *memblock_count = memblock_struct_count_;
+        *memblock_count = memblock_struct_count_;
+    }
 }
