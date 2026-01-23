@@ -4,6 +4,7 @@
 #include <lib/mem.h>
 
 #include "boot/panic.h"
+#include "lib/math.h"
 
 const size_t MM_PAGE_BYTES = MMU_GRANULARITY_4KB;
 
@@ -17,6 +18,8 @@ static p_uintptr mm_kernel_start_;
 static size_t mm_kernel_size_;
 
 static size_t mm_page_count_;
+
+static size_t mm_addr_space_;
 
 
 void mm_info_init()
@@ -38,8 +41,11 @@ void mm_info_init()
     mm_kernel_start_ = (p_uintptr)_start;
     mm_kernel_size_ = (p_uintptr)__kernel_mem_start - mm_kernel_start_;
 
-    // TODO: watch if it needs to add the tfa pages and the mmio as pages
-    mm_page_count_ = (mm_ddr_end_ - mm_kernel_start_) / MM_PAGE_BYTES;
+
+    mm_addr_space_ = mm_kernel_start_ + mm_kernel_size_;
+
+
+    mm_page_count_ = div_round_up(mm_addr_space_, MM_PAGE_BYTES);
 
 
     ASSERT(mm_ddr_size_ <= mm_max_ddr_size_);
@@ -79,4 +85,9 @@ size_t mm_info_kernel_size(void)
 size_t mm_info_page_count(void)
 {
     return mm_page_count_;
+}
+
+size_t mm_info_mm_addr_space(void)
+{
+    return mm_addr_space_;
 }

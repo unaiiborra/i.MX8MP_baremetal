@@ -1,5 +1,6 @@
 use core::ffi::c_void;
 
+pub mod mm;
 pub mod init;
 
 #[repr(C)]

@@ -8,8 +8,7 @@
 
 #define STDINT
 
-typedef enum
-{
+typedef enum {
     STDINT_INT8,
     STDINT_UINT8,
     STDINT_INT16,
@@ -21,8 +20,7 @@ typedef enum
 } STDINT_TYPES;
 
 /// Base representation of integer numbers
-typedef enum
-{
+typedef enum {
     STDINT_BASE_REPR_DEC = 10,
     STDINT_BASE_REPR_HEX = 16,
     STDINT_BASE_REPR_BIN = 2,
@@ -80,6 +78,7 @@ typedef unsigned long long uintptr;
 #define INT64_MAX 9223372036854775807LL
 #define UINT64_MAX 18446744073709551615ULL
 
+
 // TODO: acabar estos
 #define INTPTR_MIN LONG_MIN
 #define INTPTR_MAX LONG_MAX
@@ -89,8 +88,7 @@ typedef unsigned long long uintptr;
 #define INTMAX_MAX INT64_MAX
 #define UINTMAX_MAX UINT64_MAX
 
-typedef union
-{
+typedef union {
     int8 int8;
     uint8 uint8;
 
