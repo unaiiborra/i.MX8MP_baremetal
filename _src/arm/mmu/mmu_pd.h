@@ -251,7 +251,7 @@ static inline mmu_hw_pd td_build(mmu_tbl next, mmu_granularity g)
 }
 
 
-static inline mmu_hw_pd bd_build(mmu_cfg cfg, p_uintptr output_address, mmu_granularity g)
+static inline mmu_hw_pd bd_build(mmu_pg_cfg cfg, p_uintptr output_address, mmu_granularity g)
 {
     mmu_hw_pd pd = (mmu_hw_pd) {0};
 

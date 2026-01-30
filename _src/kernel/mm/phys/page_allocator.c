@@ -11,6 +11,7 @@
 #include "lib/math.h"
 #include "lib/mem.h"
 #include "lib/stdint.h"
+#include "lib/stdmacros.h"
 #include "lib/string.h"
 #include "page.h"
 #include "tests.h"
@@ -261,6 +262,33 @@ void page_free(mm_page p)
 }
 
 
+void page_free_by_tag(const char* tag)
+{
+    ASSERT(tag != NULL);
+
+    for (size_t i = 0; i < s->N; i++) {
+        page_node* n = &s->pages[i];
+
+        if (n->free)
+            continue;
+
+        if (!n->page.tag)
+            continue;
+
+        if (!strcmp(n->page.tag, tag))
+            continue;
+
+        mm_page p = {
+            .phys = i * MM_PAGE_BYTES,
+            .order = n->order,
+            .data = n->page,
+        };
+
+        page_free(p);
+    }
+}
+
+
 void page_allocator_init()
 {
     size_t entries = mm_info_page_count();
@@ -274,7 +302,7 @@ void page_allocator_init()
 
     size_t bytes = state_bytes + free_list_bytes + pages_bytes;
 
-    s = (void*)early_kalloc(bytes, "page_allocator_testing", true, false);
+    s = (void*)early_kalloc(bytes, "page_allocator", true, false);
     p_uintptr free_list_addr = (p_uintptr)s + state_bytes;
     p_uintptr pages_addr = free_list_addr + free_list_bytes;
 

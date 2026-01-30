@@ -40,9 +40,10 @@ void set_panic(panic_info panic_info);
 _Noreturn void set_and_throw_panic(panic_info panic_info);
 _Noreturn void panic();
 
-#define PANIC(panic_message)                       \
+
+#define PANIC_IMPL(panic_message)                  \
     set_and_throw_panic((panic_info) {             \
-        .message = panic_message,                  \
+        .message = (panic_message),                \
         .location =                                \
             (panic_location) {                     \
                 .file = __FILE__,                  \
@@ -52,20 +53,24 @@ _Noreturn void panic();
         .panic_reason = PANIC_REASON_MANUAL_ABORT, \
     })
 
+#define _PANIC_0() PANIC_IMPL("no message")
+#define _PANIC_1(msg) PANIC_IMPL(msg)
 
-/*
-    Assert
-*/
-
-#define _ASSERT1(cond) ((cond) ? (void)0 : PANIC("assert not met!"))
-#define _DEBUG_ASSERT1(cond) ((cond) ? (void)0 : PANIC("debug assert not met!"))
-#define _ASSERT2(cond, msg) ((cond) ? (void)0 : PANIC(msg))
-#define GET_ASSERT(_1, _2, NAME, ...) NAME
+#define _PANIC_SELECT(_0, _1, NAME, ...) NAME
+#define PANIC(...) _PANIC_SELECT(_, ##__VA_ARGS__, _PANIC_1, _PANIC_0)(__VA_ARGS__)
 
 
-#define ASSERT(...) GET_ASSERT(__VA_ARGS__, _ASSERT2, _ASSERT1)(__VA_ARGS__)
+#define _ASSERT_1(cond) ((cond) ? (void)0 : PANIC("assert not met"))
+#define _ASSERT_2(cond, msg) ((cond) ? (void)0 : PANIC(msg))
+
+#define _ASSERT_SELECT(_0, _1, _2, NAME, ...) NAME
+#define ASSERT(...) _ASSERT_SELECT(_, ##__VA_ARGS__, _ASSERT_2, _ASSERT_1)(__VA_ARGS__)
+
 #ifdef DEBUG
-#    define DEBUG_ASSERT(...) GET_ASSERT(__VA_ARGS__, _ASSERT2, _DEBUG_ASSERT1)(__VA_ARGS__)
+#    define _DEBUG_ASSERT_1(cond) ((cond) ? (void)0 : PANIC("debug assert not met"))
+#    define _DEBUG_ASSERT_2(cond, msg) ((cond) ? (void)0 : PANIC(msg))
+#    define DEBUG_ASSERT(...) \
+        _ASSERT_SELECT(_, ##__VA_ARGS__, _DEBUG_ASSERT_2, _DEBUG_ASSERT_1)(__VA_ARGS__)
 #else
 #    define DEBUG_ASSERT(...)
 #endif

@@ -43,14 +43,10 @@ void mm_early_init()
 
 #ifdef DEBUG
     uart_puts(&UART2_DRIVER, "Identity mapping mmu: \n\r");
-    mmu_debug_dump(mmu_im);
+    mmu_debug_dump(&mmu_im, MMU_TBL_LO);
 
     uart_puts(&UART2_DRIVER, "\n\rPage allocator test: \n\r");
-    p_uintptr pg_alloc = page_allocator_testing_init();
-    run_page_allocator_tests();
-    early_kfree(pg_alloc);
 #endif
-
 
     page_allocator_init();
 }
@@ -63,13 +59,7 @@ void mm_init()
     early_kalloc_get_memblocks(&mblcks, &n);
 
     page_allocator_reserve_memblocks(mblcks, n);
-
-    mm_page p = page_malloc(4, (mm_page_data) {
-                                   .tag = "test",
-                               });
-
-
+#ifdef DEBUG
     page_allocator_debug();
-    page_free(p);
-    page_allocator_debug();
+#endif
 }

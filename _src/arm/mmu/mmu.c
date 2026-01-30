@@ -11,45 +11,49 @@
 #include "mmu_helpers.h"
 #include "mmu_pd.h"
 #include "mmu_types.h"
+#include "regs/mmu_sysregs.h"
 
-extern uint64 _mmu_get_MAIR_EL1(void);
-extern void _mmu_set_MAIR_EL1(uint64 v);
+static void mmu_apply(mmu_handle* h);
 
-extern uint64 _mmu_get_SCTLR_EL1(void);
-extern void _mmu_set_SCTLR_EL1(uint64 v);
-
-extern uint64 _mmu_get_TTBR0_EL1(void);
-extern void _mmu_set_TTBR0_EL1(uint64 v);
-
-extern uint64 _mmu_get_TTBR1_EL1(void);
-extern void _mmu_set_TTBR1_EL1(uint64 v);
-
-// https://df.lth.se/~getz/ARM/SysReg/AArch64-tcr_el1.html#fieldset_0-5_0
-extern uint64 _mmu_get_TCR_EL1(void);
-extern void _mmu_set_TCR_EL1(uint64 v);
-
-extern uint64 _mmu_get_ID_AA64MMFR0_EL1(void);
-
-
-void mmu_init(mmu_handle* h, mmu_granularity g, mmu_alloc alloc, mmu_free free)
+void mmu_init(mmu_handle* h, mmu_cfg cfg, mmu_alloc alloc, mmu_free free)
 {
-    mmu_tbl tbl0 = alloc_tbl(alloc, g, true, NULL);
+    mmu_tbl tbl0 = alloc_tbl(alloc, cfg.lo_gran, true, NULL);
+    mmu_tbl tbl1 = alloc_tbl(alloc, cfg.hi_gran, true, NULL);
 
     *h = (mmu_handle) {
-        .g_ = g,
+
         .alloc_ = alloc,
         .free_ = free,
         .tbl0_ = (void*)tbl0.pds,
+        .tbl1_ = (void*)tbl1.pds,
+        .cfg_ = cfg,
+        .slock_ = {0},
     };
 
     spinlock_init(&h->slock_);
+
+    mmu_apply(h);
+}
+
+mmu_cfg mmu_get_cfg(mmu_handle* h)
+{
+    return h->cfg_;
+}
+
+void mmu_reconfig(mmu_handle* h, mmu_cfg cfg, mmu_alloc alloc, mmu_free free)
+{
+    h->alloc_ = alloc == NULL ? h->alloc_ : alloc;
+    h->free_ = free == NULL ? h->free_ : free;
+    h->cfg_ = cfg;
+
+    mmu_apply(h); // is already locked
 }
 
 
-mmu_cfg mmu_cfg_new(uint8 attr_index, mmu_access_permission ap, uint8 shareability, bool non_secure,
-                    bool access_flag, bool pxn, bool uxn, uint8 sw)
+mmu_pg_cfg mmu_pg_cfg_new(uint8 attr_index, mmu_access_permission ap, uint8 shareability,
+                          bool non_secure, bool access_flag, bool pxn, bool uxn, uint8 sw)
 {
-    return (mmu_cfg) {
+    return (mmu_pg_cfg) {
         .attr_index = attr_index,
         .ap = ap,
         .shareability = shareability,
@@ -62,16 +66,16 @@ mmu_cfg mmu_cfg_new(uint8 attr_index, mmu_access_permission ap, uint8 shareabili
 }
 
 
-static void UNLOCKED_free_subtree(mmu_handle h, mmu_tbl tbl, mmu_op_info* info)
+static void UNLOCKED_free_subtree(mmu_handle* h, mmu_tbl tbl, mmu_op_info* info)
 {
-    mmu_granularity g = h.g_;
+    mmu_granularity g = h->cfg_.lo_gran;
 
     for (size_t i = 0; i < tbl_entries(g); i++)
         if (pd_get_valid(tbl.pds[i]) && pd_get_type(tbl.pds[i]) == MMU_PD_TABLE)
             UNLOCKED_free_subtree(h, tbl_from_td(tbl.pds[i], g), info);
 
 
-    h.free_(tbl.pds);
+    h->free_(tbl.pds);
 
     if (info)
         info->freed_tbls++;
@@ -97,8 +101,8 @@ static inline void get_target_lvl(mmu_tbl_level* target_lvl, size_t* cover, size
 }
 
 
-static bool UNLOCKED_map_(mmu_handle h, v_uintptr virt, p_uintptr phys, size_t size, mmu_cfg cfg,
-                          mmu_op_info* info)
+static bool UNLOCKED_map_(mmu_handle* h, v_uintptr virt, p_uintptr phys, size_t size,
+                          mmu_pg_cfg cfg, mmu_op_info* info)
 {
 #ifdef DEBUG
     if (info)
@@ -112,9 +116,9 @@ static bool UNLOCKED_map_(mmu_handle h, v_uintptr virt, p_uintptr phys, size_t s
         return true;
 
 
-    mmu_granularity g = h.g_;
+    mmu_granularity g = h->cfg_.lo_gran;
     mmu_tbl tbl0 = tbl0_from_handle(h);
-    mmu_alloc alloc = h.alloc_;
+    mmu_alloc alloc = h->alloc_;
 
     mmu_tbl_level target_lvl;
     size_t cover;
@@ -192,7 +196,7 @@ static bool UNLOCKED_map_(mmu_handle h, v_uintptr virt, p_uintptr phys, size_t s
 }
 
 
-bool mmu_map(mmu_handle h, v_uintptr virt, p_uintptr phys, size_t size, mmu_cfg cfg,
+bool mmu_map(mmu_handle* h, v_uintptr virt, p_uintptr phys, size_t size, mmu_pg_cfg cfg,
              mmu_op_info* info)
 {
     bool result;
@@ -206,15 +210,15 @@ bool mmu_map(mmu_handle h, v_uintptr virt, p_uintptr phys, size_t size, mmu_cfg 
             .freed_tbls = 0,
         };
 
-    spin_lock(&h.slock_);
+    spin_lock(&h->slock_);
     result = UNLOCKED_map_(h, virt, phys, size, cfg, info);
-    spin_unlock(&h.slock_);
+    spin_unlock(&h->slock_);
 
     return result;
 }
 
 
-bool UNLOCKED_unmap_(mmu_handle h, v_uintptr virt, size_t size, mmu_op_info* info)
+bool UNLOCKED_unmap_(mmu_handle* h, v_uintptr virt, size_t size, mmu_op_info* info)
 {
 #ifdef DEBUG
     if (info)
@@ -226,7 +230,7 @@ bool UNLOCKED_unmap_(mmu_handle h, v_uintptr virt, size_t size, mmu_op_info* inf
     if (size == 0)
         return true;
 
-    mmu_granularity g = h.g_;
+    mmu_granularity g = h->cfg_.lo_gran;
     mmu_tbl tbl0 = tbl0_from_handle(h);
     mmu_tbl tbl = tbl0;
 
@@ -331,7 +335,7 @@ bool UNLOCKED_unmap_(mmu_handle h, v_uintptr virt, size_t size, mmu_op_info* inf
 }
 
 
-bool mmu_unmap(mmu_handle h, v_uintptr virt, size_t size, mmu_op_info* info)
+bool mmu_unmap(mmu_handle* h, v_uintptr virt, size_t size, mmu_op_info* info)
 {
     bool result;
 
@@ -344,9 +348,9 @@ bool mmu_unmap(mmu_handle h, v_uintptr virt, size_t size, mmu_op_info* info)
             .freed_tbls = 0,
         };
 
-    spin_lock(&h.slock_);
+    spin_lock(&h->slock_);
     result = UNLOCKED_unmap_(h, virt, size, info);
-    spin_unlock(&h.slock_);
+    spin_unlock(&h->slock_);
 
     return result;
 }
@@ -369,111 +373,40 @@ static inline bool mmu_supports_16kb_(uint64 id_aa64mmfr0)
     return (((id_aa64mmfr0 >> 20) & 0xF) == 0);
 }
 
-void mmu_activate(mmu_handle h, bool d_cache, bool i_cache, bool align_trap)
+static void mmu_apply(mmu_handle* h)
 {
-    mmu_granularity g = h.g_;
+    mmu_granularity g[2] = {h->cfg_.lo_gran, h->cfg_.hi_gran};
     mmu_tbl tbl0 = tbl0_from_handle(h);
+    mmu_tbl tbl1 = tbl1_from_handle(h);
 
 
-    ASSERT(tbl0.pds);
+    ASSERT(tbl0.pds && tbl1.pds);
 
 
-    irq_spinlocked(&h.slock_)
+    irq_spinlocked(&h->slock_)
     {
         uint64 id_aa64mmfr0 = _mmu_get_ID_AA64MMFR0_EL1();
-        uint64 pa_range = id_aa64mmfr0 & 0xFUL; // [3:0] DDI0500J_cortex_a53_trm.pdf p.104
 
+        for (size_t i = 0; i < 2; i++)
+            switch (g[i]) {
+                case MMU_GRANULARITY_4KB:
+                    if (!mmu_supports_4kb_(id_aa64mmfr0))
+                        PANIC("4KB granularity not supported");
+                    break;
+                case MMU_GRANULARITY_16KB:
+                    if (!mmu_supports_16kb_(id_aa64mmfr0))
+                        PANIC("16KB granularity not supported");
+                    break;
+                case MMU_GRANULARITY_64KB:
+                    if (!mmu_supports_64kb_(id_aa64mmfr0))
+                        PANIC("64KB granularity not supported");
+                    break;
+                default:
+                    PANIC("Unknown MMU granularity");
+            }
 
-        switch (g) {
-            case MMU_GRANULARITY_4KB:
-                if (!mmu_supports_4kb_(id_aa64mmfr0))
-                    PANIC("4KB granularity not supported");
-                break;
-            case MMU_GRANULARITY_16KB:
-                if (!mmu_supports_16kb_(id_aa64mmfr0))
-                    PANIC("16KB granularity not supported");
-                break;
-            case MMU_GRANULARITY_64KB:
-                if (!mmu_supports_64kb_(id_aa64mmfr0))
-                    PANIC("64KB granularity not supported");
-                break;
-            default:
-                PANIC("Unknown MMU granularity");
-        }
-
-
-        uint64 ips;
-        switch (pa_range) {
-            case 0b0000:
-                ips = 0b000;
-                break; // 32 bits
-            case 0b0001:
-                ips = 0b001;
-                break; // 36 bits
-            case 0b0010:
-                ips = 0b010;
-                break; // 40 bits
-            case 0b0011:
-                ips = 0b011;
-                break; // 42 bits
-            case 0b0100:
-                ips = 0b100;
-                break; // 44 bits
-            case 0b0101:
-                ips = 0b101;
-                break; // 48 bits
-            default:
-                PANIC("Unsupported PA range");
-        }
-
-
-        uint64 sctlr = _mmu_get_SCTLR_EL1();
-        sctlr &= ~(1ULL << 0);  // M = 0
-        sctlr &= ~(1ULL << 1);  // A = 0 (alignment trap)
-        sctlr &= ~(1ULL << 2);  // C = 0
-        sctlr &= ~(1ULL << 12); // I = 0
-        _mmu_set_SCTLR_EL1(sctlr);
-
-
-        // AttrIdx 0: Normal memory, WB WA
-        // AttrIdx 1: Device-nGnRE
-        // https://df.lth.se/~getz/ARM/SysReg/AArch64-mair_el1.html
-        uint64 mair = (0xFFUL << 0) | (0x04UL << 8);
-
-        int64 tcr = 0;
-        tcr |= (16ULL << 0);    // T0SZ = 16 (48-bit VA)
-        tcr |= (0b00ULL << 14); // TG0 = 4KB
-        tcr |= (0b11ULL << 12); // SH0 = Inner
-        tcr |= (0b01ULL << 10); // ORGN0 = WB WA
-        tcr |= (0b01ULL << 8);  // IRGN0 = WB WA
-        tcr |= (1ULL << 23);    // EPD1 = 1 (disable TTBR1)
-        tcr |= (ips << 32);     // IPS
-
-
-        _mmu_set_MAIR_EL1(mair);
-        _mmu_set_TCR_EL1(tcr);
         _mmu_set_TTBR0_EL1((uintptr)tbl0.pds);
-        _mmu_set_TTBR1_EL1(0); // TODO: allow using ttbr1
-
-
-        asm volatile("tlbi vmalle1\n"
-                     "dsb ish\n"
-                     "isb\n");
-
-
-        sctlr = _mmu_get_SCTLR_EL1();
-
-        asm volatile("isb");
-
-        sctlr |= ((uint64)i_cache << 12);   // I instruction cache
-        sctlr |= ((uint64)d_cache << 2);    // D data cache
-        sctlr |= ((uint64)align_trap << 1); // A alignment trap
-        sctlr |= (1UL << 0);                // M MMU enable
-
-        asm volatile("dsb sy\n");
-        _mmu_set_SCTLR_EL1(sctlr);
-
-        asm volatile("isb\n"
-                     "dsb sy");
+        _mmu_set_TTBR1_EL1((uintptr)tbl1.pds);
+        mmu_apply_cfg(h->cfg_);
     }
 }

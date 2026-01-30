@@ -39,10 +39,10 @@ static void dbg_dec(uint64 v)
 }
 
 
-void mmu_debug_dump_tbl_(mmu_handle h, mmu_tbl tbl, mmu_tbl_level lvl, v_uintptr va_base,
-                         size_t indent)
+void mmu_debug_dump_tbl_(mmu_handle* h, mmu_tbl tbl, mmu_tbl_rng ttbrx, mmu_tbl_level lvl,
+                         v_uintptr va_base, size_t indent)
 {
-    mmu_granularity g = h.g_;
+    mmu_granularity g = ttbrx == MMU_TBL_LO ? h->cfg_.lo_gran : h->cfg_.hi_gran;
     size_t entries = tbl_entries(g);
     size_t cover = pd_cover_bytes(g, lvl);
 
@@ -74,7 +74,7 @@ void mmu_debug_dump_tbl_(mmu_handle h, mmu_tbl tbl, mmu_tbl_level lvl, v_uintptr
                 dbg_u64(pa);
                 dbg_puts("\n\r");
 
-                mmu_debug_dump_tbl_(h, tbl_from_td(pd, g), lvl + 1, va, indent + 1);
+                mmu_debug_dump_tbl_(h, tbl_from_td(pd, g), ttbrx, lvl + 1, va, indent + 1);
                 break;
             }
 
@@ -97,13 +97,14 @@ void mmu_debug_dump_tbl_(mmu_handle h, mmu_tbl tbl, mmu_tbl_level lvl, v_uintptr
 }
 
 
-void mmu_debug_dump(mmu_handle h)
+void mmu_debug_dump(mmu_handle* h, mmu_tbl_rng ttbrx)
 {
-    mmu_debug_dump_tbl_(h, tbl0_from_handle(h), MMU_TBL_LV0, 0, 0);
+    mmu_debug_dump_tbl_(h, tbl0_from_handle(h), ttbrx, MMU_TBL_LV0, 0, 0);
 }
 
 
-void mmu_stress_test(mmu_handle h, mmu_cfg cfg, v_uintptr va_start, v_uintptr va_end)
+void mmu_stress_test(mmu_handle* h, mmu_tbl_rng ttbrx, mmu_pg_cfg cfg, v_uintptr va_start,
+                     v_uintptr va_end)
 {
     mmu_op_info info;
     bool ok;
@@ -119,7 +120,7 @@ void mmu_stress_test(mmu_handle h, mmu_cfg cfg, v_uintptr va_start, v_uintptr va
     ASSERT(ok);
 
     uart_puts_sync(&UART2_DRIVER, "[TEST 1] Table dump\n\r");
-    mmu_debug_dump(h);
+    mmu_debug_dump(h, ttbrx);
 
     /* ------------------------------------------------------------ */
     /* 2) Unmap by halves (break large blocks)                      */
@@ -159,7 +160,7 @@ void mmu_stress_test(mmu_handle h, mmu_cfg cfg, v_uintptr va_start, v_uintptr va
     }
 
     uart_puts_sync(&UART2_DRIVER, "[TEST 3] Table dump\n\r");
-    mmu_debug_dump(h);
+    mmu_debug_dump(h, ttbrx);
 
     /* ------------------------------------------------------------ */
     /* 4) Alternating unmap (interleaved holes)                     */
@@ -172,7 +173,7 @@ void mmu_stress_test(mmu_handle h, mmu_cfg cfg, v_uintptr va_start, v_uintptr va
     }
 
     uart_puts_sync(&UART2_DRIVER, "[TEST 4] Table dump\n\r");
-    mmu_debug_dump(h);
+    mmu_debug_dump(h, ttbrx);
 
     /* ------------------------------------------------------------ */
     /* 5) Remap holes with different PA                             */
@@ -185,7 +186,7 @@ void mmu_stress_test(mmu_handle h, mmu_cfg cfg, v_uintptr va_start, v_uintptr va
     }
 
     uart_puts_sync(&UART2_DRIVER, "[TEST 5] Table dump\n\r");
-    mmu_debug_dump(h);
+    mmu_debug_dump(h, ttbrx);
 
     /* ------------------------------------------------------------ */
     /* 6) Fine-grained stress: 4 KiB pages                          */
@@ -201,7 +202,7 @@ void mmu_stress_test(mmu_handle h, mmu_cfg cfg, v_uintptr va_start, v_uintptr va
     }
 
     uart_puts_sync(&UART2_DRIVER, "[TEST 6] Table dump\n\r");
-    mmu_debug_dump(h);
+    mmu_debug_dump(h, ttbrx);
 
     /* ------------------------------------------------------------ */
     /* 7) Full cleanup                                              */
@@ -212,7 +213,7 @@ void mmu_stress_test(mmu_handle h, mmu_cfg cfg, v_uintptr va_start, v_uintptr va
     ASSERT(ok);
 
     uart_puts_sync(&UART2_DRIVER, "[TEST 7] Final table dump\n\r");
-    mmu_debug_dump(h);
+    mmu_debug_dump(h, ttbrx);
 
     uart_puts_sync(&UART2_DRIVER, "\n\r=== MMU STRESS TEST END ===\n\r");
 }

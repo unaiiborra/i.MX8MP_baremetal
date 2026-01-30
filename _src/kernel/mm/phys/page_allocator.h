@@ -30,7 +30,12 @@ p_uintptr page_allocator_testing_init();
 
 
 mm_page page_malloc(size_t order, mm_page_data p);
+
 void page_free(mm_page p);
+
+/// should not be prioritized over page_free(), the main purpose is to clean non permanent early
+/// stage allocations
+void page_free_by_tag(const char* tag);
 
 
 void page_allocator_debug_pages(bool full_print);

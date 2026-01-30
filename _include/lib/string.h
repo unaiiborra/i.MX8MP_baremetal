@@ -8,6 +8,11 @@
 /// the source
 void strcopy(char* dst, const char* src, uint64 max_size);
 
+
+/// Compares two strings and tells if the contents are equal
+bool strcmp(const char* a, const char* b);
+
+
 /// Converts a uint8 to a char, as it only converts to one char, it panics if
 /// value is > 9
 char uint8_to_ascii_char(uint8 n);
