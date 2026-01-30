@@ -21,6 +21,17 @@ static inline uint64 log2_floor_u64(uint64 x)
     return r;
 }
 
+static inline uint64 power_of2(uint64 x)
+{
+    return 1ULL << x;
+}
+
+
+static inline uint64 square(uint64 x)
+{
+    return x * x;
+}
+
 
 static inline uint64 max(uint64 a, uint64 b)
 {

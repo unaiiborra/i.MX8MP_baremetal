@@ -21,7 +21,8 @@ static size_t mm_page_count_;
 
 static size_t mm_addr_space_;
 
-
+/// all this definitions are mostly hardcoded for the imx8mp, the idea is that they should come from
+/// a dtb file or any other valid source that allows the kernel to dynamically initialize itself
 void mm_info_init()
 {
     extern p_uintptr __ddr_size;
@@ -42,7 +43,7 @@ void mm_info_init()
     mm_kernel_size_ = (p_uintptr)__kernel_mem_start - mm_kernel_start_;
 
 
-    mm_addr_space_ = mm_kernel_start_ + mm_kernel_size_;
+    mm_addr_space_ = mm_ddr_end_;
 
 
     mm_page_count_ = div_round_up(mm_addr_space_, MM_PAGE_BYTES);

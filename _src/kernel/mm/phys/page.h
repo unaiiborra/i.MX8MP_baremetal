@@ -5,14 +5,12 @@
 
 
 typedef struct {
-    uint32 test;
     v_uintptr virt;
-    char* tag;
+    const char* tag;
+    // TODO: use a bitfield
+    bool device_mem;
+    bool permanent;
 } mm_page_data;
 
 
-#define UNINIT_PAGE \
-    (mm_page_data)  \
-    {               \
-        .test = 0,  \
-    }
+#define UNINIT_PAGE (mm_page_data) {0}

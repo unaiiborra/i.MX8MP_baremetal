@@ -19,23 +19,10 @@
 #include "lib/math.h"
 #include "lib/unit/mem.h"
 #include "mm/init/early_kalloc.h"
+#include "mm/phys/page.h"
+#include "mm/phys/page_allocator.h"
+#include "mm/phys/tests.h"
 
-
-static void test_putc(char c)
-{
-    uart_putc(&UART2_DRIVER, c);
-}
-
-
-static void puts(const char* s, ...)
-{
-    va_list ap;
-    va_start(ap, s);
-
-    str_fmt_print(test_putc, s, ap);
-
-    va_end(ap);
-}
 
 // Main function of the kernel, called by the bootloader (/boot/boot.S)
 _Noreturn void kernel_entry()
@@ -47,15 +34,11 @@ _Noreturn void kernel_entry()
         uart_puts(&UART2_DRIVER, "\x1B[2J\x1B[H"); // clear screen
 
         mm_early_init();
+        mm_init();
 
-        uart_puts(&UART2_DRIVER, "MMU apparently not crashing\n\r");
+        uart_puts(&UART2_DRIVER, "DONE");
     }
 
 
-    puts("c=%c s=%s d=%d u=%u x=%x p=%p %%\n", 'A', NULL, -42, 42u, 0x2A, (void*)0x1234);
-
-
-    loop
-    {
-    }
+    loop;
 }

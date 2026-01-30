@@ -7,18 +7,32 @@
 
 
 typedef struct {
-    size_t order;
+    uint8 order;
     p_uintptr phys;
     mm_page_data data;
 } mm_page;
 
 
-#define NONE (~(size_t)0)
-#define IS_NONE(v) ((v) == NONE)
+static inline bool page_is_valid(mm_page p)
+{
+    return p.order != UINT8_MAX;
+}
 
 
 void page_allocator_init();
+void page_allocator_reserve_memblocks(memblock* mblcks, size_t n);
 
 
-mm_page page_malloc(size_t order, const char* tag);
+#ifdef DEBUG
+p_uintptr page_allocator_testing_init();
+
+#endif
+
+
+mm_page page_malloc(size_t order, mm_page_data p);
 void page_free(mm_page p);
+
+
+void page_allocator_debug_pages(bool full_print);
+void page_allocator_debug();
+void page_allocator_validate();

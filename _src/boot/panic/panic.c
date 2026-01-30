@@ -18,7 +18,7 @@ static inline void PANIC_puts_(char* s)
 #define PANIC_MESSAGE_LEN_INIT_VALUE 4096
 #define PANIC_FILE_LEN_INIT_VALUE 1024
 
-// The global static scope variables and buffers allow rust to easily send the
+// The global scope variables and buffers allow rust to easily send the
 // message in a c format string with \0. It also allows to set the panic
 // information without throwing the panic.
 
@@ -90,13 +90,11 @@ _Noreturn void panic()
 
     char buf[200];
 
-    UART_init_stage0(PANIC_UART_OUTPUT);
 
     uint64 coreid = ARM_get_cpu_affinity().aff0;
 
     stdint_to_ascii((STDINT_UNION) {.uint64 = coreid}, STDINT_UINT64, buf, 200,
                     STDINT_BASE_REPR_DEC);
-
 
     PANIC_puts_("\n\r[PANIC!]\n\rCore: ");
     PANIC_puts_(buf);

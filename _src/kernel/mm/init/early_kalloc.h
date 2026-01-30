@@ -10,6 +10,7 @@ typedef struct {
     _Alignas(16) size_t blocks;
     _Alignas(16) const char* tag;
     _Alignas(16) bool permanent;
+    _Alignas(16) bool device_memory;
 } memblock;
 
 
@@ -18,13 +19,26 @@ void early_kalloc_init();
 
 /// Allocates a kernel region and saves the memory blocks it allocated for later initialization of
 /// other allocators
-p_uintptr early_kalloc(size_t bytes, const char* tag, bool permanent);
+p_uintptr early_kalloc(size_t bytes, const char* tag, bool permanent, bool device_memory);
+
+
+#ifdef DEBUG
+/// Function that should only be called in DEBUG mode. It can only free the last allocated memblocks.
+void early_kfree(p_uintptr addr);
+#else
+#    include "boot/panic.h"
+#    define early_kfree(...)                                                                       \
+        PANIC("early_kfree should be protected under DEBUG ifdefs and not be used in release "     \
+              "versions. The main intent of this free fn is to allocate a test, test it and then " \
+              "allocate the real data")
+#endif
+
 
 /// Returns the pointer to the memblocks so later stage allocators like the page allocators can
 /// update their structs and be coherent with the kernel memory blocks. The first time called it
 /// reallocates all the structure to the end of the last allocated block and autoassigns itself as a
 /// non permanent block. It is the other allocators job to free the early_kalloc block.
-void early_kalloc_get_memblocks(memblock** memblocks, size_t* memblock_count);
+void early_kalloc_get_memblocks(memblock** mblcks, size_t* mblck_structr_count);
 
 
 #ifdef TEST

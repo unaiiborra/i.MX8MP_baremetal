@@ -45,7 +45,8 @@ void early_kalloc_init()
 }
 
 
-static void UNLOCKED_early_kalloc_(void** addr, size_t bytes, const char* tag, bool permanent)
+static void UNLOCKED_early_kalloc_(void** addr, size_t bytes, const char* tag, bool permanent,
+                                   bool device_memory)
 {
     size_t blocks = (bytes + MEMBLOCK_SIZE - 1) / MEMBLOCK_SIZE;
 
@@ -64,9 +65,10 @@ static void UNLOCKED_early_kalloc_(void** addr, size_t bytes, const char* tag, b
         .blocks = blocks,
         .tag = tag,
         .permanent = permanent,
+        .device_memory = device_memory,
     };
 
-    
+
     *addr = (void*)next_memblock_->addr;
 
     memblock_struct_count_++;
@@ -77,7 +79,7 @@ static void UNLOCKED_early_kalloc_(void** addr, size_t bytes, const char* tag, b
 }
 
 
-p_uintptr early_kalloc(size_t bytes, const char* tag, bool permanent)
+p_uintptr early_kalloc(size_t bytes, const char* tag, bool permanent, bool device_memory)
 {
     void* addr;
 
@@ -85,7 +87,7 @@ p_uintptr early_kalloc(size_t bytes, const char* tag, bool permanent)
     // decide to use multithreading for initializing
     spinlocked(&early_kallock_lock_)
     {
-        UNLOCKED_early_kalloc_(&addr, bytes, tag, permanent);
+        UNLOCKED_early_kalloc_(&addr, bytes, tag, permanent, device_memory);
     }
 
     return (p_uintptr)addr;
@@ -98,7 +100,7 @@ static void UNLOCKED_finish_early_kalloc_stage_()
     size_t meta_bytes = sizeof(memblock) * (memblock_struct_count_ + 1);
 
     void* addr;
-    UNLOCKED_early_kalloc_(&addr, meta_bytes, "early_kalloc", false);
+    UNLOCKED_early_kalloc_(&addr, meta_bytes, "early_kalloc", false, false);
 
     // last backwards placed memblock (placed inverse (from bigger addresses to smaller))
     memblock* last_memblock = memblocks_start_ - memblock_struct_count_;
@@ -113,7 +115,7 @@ static void UNLOCKED_finish_early_kalloc_stage_()
 }
 
 
-void early_kalloc_get_memblocks(memblock** memblocks, size_t* memblock_count)
+void early_kalloc_get_memblocks(memblock** mblcks, size_t* mblck_structr_count)
 {
     spinlocked(&early_kallock_lock_)
     {
@@ -122,10 +124,28 @@ void early_kalloc_get_memblocks(memblock** memblocks, size_t* memblock_count)
         if (first_call)
             UNLOCKED_finish_early_kalloc_stage_();
 
-        *memblocks = memblocks_start_;
+        *mblcks = memblocks_start_;
 
         early_kalloc_stage_ended_ = true;
 
-        *memblock_count = memblock_struct_count_;
+        *mblck_structr_count = memblock_struct_count_;
     }
 }
+
+
+#ifdef DEBUG
+void early_kfree(p_uintptr addr)
+{
+    spinlocked(&early_kallock_lock_)
+    {
+        ASSERT(!early_kalloc_stage_ended_);
+        ASSERT(memblock_struct_count_ != 0);
+
+        next_memblock_++;
+        current_phys_ -= next_memblock_->blocks * MEMBLOCK_SIZE;
+        memblock_struct_count_--;
+
+        ASSERT(next_memblock_->addr = addr);
+    }
+}
+#endif
