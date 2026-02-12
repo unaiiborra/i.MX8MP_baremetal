@@ -11,20 +11,17 @@ _spin_try_lock:
     stxr    w3, w2, [x0]    // attempt to store
     cbnz    w3, 1f          // store failed -> fail
 
-    mov     w0, #1          // true (success)
+    mov     x0, #1          // true (success)
     ret
 1:
     clrex                   // clear exclusive state
-    mov     w0, #0          // false (not locked)
+    mov     x0, #0          // false (not locked)
     ret
 
 
 .global _spin_lock
 // x0 = spinlock_t *lock
 _spin_lock:
-    ldr     w1, [x0]
-    cbnz    w1, sleep       // slock != 0 -> spin
-
     ldaxr   w1, [x0]        // load acquire exclusive
     cbnz    w1, sleep       // slock != 0 -> spin
 

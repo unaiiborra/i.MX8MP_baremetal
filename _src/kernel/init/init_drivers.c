@@ -14,6 +14,9 @@
 #include "drivers/arm_generic_timer/arm_generic_timer.h"
 #include "kernel/mm.h"
 
+// TODO: full remake of this file
+
+
 static void uart_stage0_()
 {
     uart_init_stage0(&UART2_DRIVER);

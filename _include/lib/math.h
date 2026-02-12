@@ -24,7 +24,8 @@ static inline uint64 log2_ceil_u64(uint64 x)
     return x <= 1 ? 0 : 64u - __builtin_clzll(x - 1);
 }
 
-#define log2_floor(x) _Generic((x), uint32: log2_floor_u32, uint64: log2_floor_u64)(x)
+#define log2_floor(x) \
+    _Generic((x), uint32: log2_floor_u32, uint64: log2_floor_u64, size_t: log2_floor_u64)(x)
 #define log2_ceil(x) \
     _Generic((x), uint32: log2_ceil_u32, uint64: log2_ceil_u64, size_t: log2_ceil_u64)(x)
 

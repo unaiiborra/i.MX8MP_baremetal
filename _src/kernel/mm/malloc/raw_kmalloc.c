@@ -1,62 +1,169 @@
+#include "raw_kmalloc.h"
+
 #include <arm/mmu/mmu.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
+#include <lib/lock/corelock.h>
 #include <lib/math.h>
 #include <lib/mem.h>
 #include <lib/stdbool.h>
+#include <lib/stdint.h>
 #include <lib/stdmacros.h>
 
 #include "../mm_info.h"
 #include "../phys/page.h"
 #include "../phys/page_allocator.h"
-#include "../virt/vmalloc/vmalloc.h"
+#include "../virt/vmalloc.h"
 #include "reserve_malloc.h"
 
 
 const raw_kmalloc_cfg RAW_KMALLOC_DEFAULT_CFG = (raw_kmalloc_cfg) {
-    .assign_phys = true,
+    .assign_pa = true,
     .fill_reserve = true,
+    .device_mem = false,
+    .permanent = false,
+    .kmap = false,
 };
 
 
-void* raw_kmalloc(size_t size, const char* tag, const raw_kmalloc_cfg* cfg)
+static const mmu_pg_cfg STD_MMU_KMEM_CFG = (mmu_pg_cfg) {
+    .attr_index = 0,
+    .ap = MMU_AP_EL0_NONE_EL1_RW,
+    .shareability = 0,
+    .non_secure = false,
+    .access_flag = 1,
+    .pxn = 0,
+    .uxn = 0,
+    .sw = 0,
+};
+
+static const mmu_pg_cfg STD_MMU_DEVICE_CFG = (mmu_pg_cfg) {
+    .attr_index = 1,
+    .ap = MMU_AP_EL0_NONE_EL1_RW,
+    .shareability = 0,
+    .non_secure = false,
+    .access_flag = 1,
+    .pxn = 0,
+    .uxn = 0,
+    .sw = 0,
+};
+
+
+static corelock_t lock;
+
+
+static inline vmalloc_cfg vmalloc_cfg_from_raw_kmalloc_cfg(const raw_kmalloc_cfg* cfg,
+                                                           p_uintptr kmap_pa)
 {
-    cfg = (cfg != NULL) ? cfg : &RAW_KMALLOC_DEFAULT_CFG;
-    ASSERT(cfg->assign_phys, "TODO: dynamic mapping not implemented yet");
+    return (vmalloc_cfg) {
+        .assing_pa = cfg->assign_pa,
+        .device_mem = cfg->device_mem,
+        .permanent = cfg->permanent,
+        .kmap =
+            {
+                .use_kmap = cfg->kmap,
+                .kmap_pa = cfg->kmap ? kmap_pa : 0,
+            },
+    };
+}
 
 
-    size_t pages = div_ceil(size, MM_PAGE_BYTES);
-    size_t malloc_size = pages * MM_PAGE_BYTES;
-    size_t order = log2_ceil(pages);
+static void* raw_kmalloc_kmap(size_t pages, const char* tag, const raw_kmalloc_cfg* cfg)
+{
+    DEBUG_ASSERT(cfg->kmap && cfg->assign_pa);
 
-    mm_page page = page_malloc(order, (mm_page_data) {
-                                          .tag = tag,
-                                          .device_mem = false,
-                                          .permanent = false,
-                                      });
+    ASSERT(is_pow2(pages), "only pow2 n pages can be kmapped");
 
+    size_t o = log2_floor(pages);
 
-    p_uintptr pa = page.pa;
-    v_uintptr va = vmalloc(pages, MM_VMEM_HI);
+    mm_page page = page_malloc(o, (mm_page_data) {
+                                      .tag = tag,
+                                      .device_mem = cfg->device_mem,
+                                      .permanent = cfg->permanent,
+                                  });
 
+    v_uintptr va = vmalloc(pages, tag, vmalloc_cfg_from_raw_kmalloc_cfg(cfg, page.pa));
 
-    // TODO: not map if already mapped
-    mmu_pg_cfg mem_cfg = mmu_pg_cfg_new(0, MMU_AP_EL0_NONE_EL1_RW, 0, false, 1, 0, 0, 0);
-    bool map_result = mmu_map(&mm_mmu_h, va, pa, malloc_size, mem_cfg, NULL);
+    DEBUG_ASSERT(ptrs_are_kmapped(pv_ptr_new(page.pa, va)));
 
-    ASSERT(map_result, "kraw_malloc: mmu_map failed");
-
-    if (cfg->fill_reserve)
-        reserve_malloc_fill();
+    const mmu_pg_cfg* mmu_cfg = cfg->device_mem ? &STD_MMU_DEVICE_CFG : &STD_MMU_KMEM_CFG;
+    bool mmu_res = mmu_map(&mm_mmu_h, va, page.pa, pages * KPAGE_SIZE, *mmu_cfg, NULL);
+    ASSERT(mmu_res);
 
     return (void*)va;
 }
 
 
-void raw_kfree(void* ptr, const raw_kmalloc_cfg* cfg)
+static void* raw_kmalloc_dynamic(size_t pages, const char* tag, const raw_kmalloc_cfg* cfg)
+{
+    DEBUG_ASSERT(!cfg->kmap);
+    ASSERT(cfg->assign_pa, "vmalloc: TODO: NOT IMPLEMENTED YET");
+
+
+    v_uintptr start = vmalloc(pages, tag, vmalloc_cfg_from_raw_kmalloc_cfg(cfg, 0));
+
+    v_uintptr v = start;
+    size_t rem = pages;
+
+    while (rem > 0) {
+        size_t o = log2_floor(rem);
+        size_t order_bytes = power_of2(o) * KPAGE_SIZE;
+
+        mm_page page = page_malloc(o, (mm_page_data) {
+                                          .tag = tag,
+                                          .device_mem = cfg->device_mem,
+                                          .permanent = cfg->permanent,
+                                      });
+
+        const mmu_pg_cfg* mmu_cfg = cfg->device_mem ? &STD_MMU_DEVICE_CFG : &STD_MMU_KMEM_CFG;
+        bool mmu_res = mmu_map(&mm_mmu_h, v, page.pa, order_bytes, *mmu_cfg, NULL);
+        ASSERT(mmu_res);
+
+
+        v += order_bytes;
+        rem -= power_of2(o);
+    }
+
+    DEBUG_ASSERT(start + (pages * KPAGE_SIZE) == v);
+
+    return (void*)start;
+}
+
+void raw_kmalloc_init()
+{
+    corelock_init(&lock);
+}
+
+
+void* raw_kmalloc(size_t pages, const char* tag, const raw_kmalloc_cfg* cfg)
+{
+    void* va;
+
+    cfg = (cfg != NULL) ? cfg : &RAW_KMALLOC_DEFAULT_CFG;
+
+    ASSERT(cfg->assign_pa, "TODO: dynamic mapping not implemented yet");
+
+    corelocked(&lock)
+    {
+        if (cfg->kmap) {
+            va = raw_kmalloc_kmap(pages, tag, cfg);
+        }
+        else {
+            va = raw_kmalloc_dynamic(pages, tag, cfg);
+        }
+
+        if (cfg->fill_reserve)
+            reserve_malloc_fill();
+    }
+
+    return va;
+}
+
+
+void raw_kfree(void* ptr)
 {
     (void)ptr;
-    (void)cfg;
-
-    PANIC("TODO: raw_kfree: NOT IMPLEMENTED YET");
+    corelocked(&lock)
+    {
+    }
 }

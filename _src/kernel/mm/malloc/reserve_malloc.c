@@ -6,38 +6,42 @@
 
 #include "early_kalloc.h"
 #include "kernel/mm.h"
+#include "lib/stdbool.h"
 
 
-static reserve_allocator reserve_alloc;
+#define RESERVE_MALLOC_SIZE BITFIELD_CAPACITY(bitfield32)
+const size_t RESERVE_MALLOC_RESERVE_SIZE = RESERVE_MALLOC_SIZE;
+
 
 static pv_ptr reserved_addr[RESERVE_MALLOC_SIZE];
 static bitfield32 reserved_pages;
-
-
-static pv_ptr reserve_malloc_early_allocator()
-{
-    p_uintptr pa = early_kalloc(KPAGE_SIZE, "reserve_allocator_page", false, false);
-    v_uintptr va = mm_kpa_to_kva(pa); // works because all the memblocks are assured to be mapped
-                                      // with the kernel physmap offset
-
-    return pv_ptr_new(pa, va);
-}
 
 
 void reserve_malloc_init()
 {
     ASSERT(RESERVE_MALLOC_SIZE <= bitfield_bit_size(reserved_pages));
 
-    reserve_alloc = reserve_malloc_early_allocator;
     reserved_pages = 0;
 
-    reserve_malloc_fill();
-}
+    for (size_t i = 0; i < RESERVE_MALLOC_SIZE; i++) {
+        ASSERT(!bitfield_get(reserved_pages, i));
+
+        p_uintptr pa = early_kalloc(KPAGE_SIZE, "reserve_allocator_page", false, false);
+        v_uintptr va = mm_kpa_to_kva(pa); // works because all the memblocks are assured to be
+                                          // mapped with the kernel physmap offset
 
 
-void reserve_malloc_reconfig_allocator(reserve_allocator allocator)
-{
-    reserve_alloc = allocator;
+        pv_ptr pv = pv_ptr_new(pa, va);
+
+
+        ASSERT(pv.pa != 0 && ptrs_are_kmapped(pv));
+        reserved_addr[i] = pv;
+
+        bitfield_set_high(reserved_pages, i);
+    }
+
+
+    ASSERT(reserved_pages == (typeof(reserved_pages))((1ULL << RESERVE_MALLOC_SIZE) - 1));
 }
 
 
@@ -67,9 +71,20 @@ void reserve_malloc_fill()
         if (bitfield_get(reserved_pages, i))
             break;
 
-        pv_ptr pv = reserve_alloc();
 
-        ASSERT(pv.pa != 0 && ptrs_are_kmapped(pv));
+        raw_kmalloc_cfg cfg = RAW_KMALLOC_DEFAULT_CFG;
+        cfg.fill_reserve = false;
+        cfg.kmap = true;
+        cfg.assign_pa = true;
+
+
+        v_uintptr va = (v_uintptr)raw_kmalloc(1, "reserve_malloc page", &cfg);
+        p_uintptr pa = mm_kva_to_kpa(va);
+
+        pv_ptr pv = pv_ptr_new(pa, va);
+
+
+        DEBUG_ASSERT(pv.pa != 0 && ptrs_are_kmapped(pv));
         reserved_addr[i] = pv;
 
         bitfield_set_high(reserved_pages, i);

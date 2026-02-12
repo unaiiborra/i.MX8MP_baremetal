@@ -7,6 +7,7 @@
 
 #include "drivers/uart/uart.h"
 #include "kernel/io/term.h"
+#include "kernel/mm.h"
 
 extern kernel_initcall_t __kernel_init_stage0_start[];
 extern kernel_initcall_t __kernel_init_stage0_end[];
@@ -38,6 +39,7 @@ void kernel_init(void)
     term_init_full();
     term_add_output(term_output);
 
+
     // Stage 0 (pre irq initialization)
     for (kernel_initcall_t* fn = __kernel_init_stage0_start; fn < __kernel_init_stage0_end; fn++)
         (*fn)();
@@ -58,4 +60,10 @@ void kernel_init(void)
 
     for (kernel_initcall_t* fn = __kernel_init_stage2_start; fn < __kernel_init_stage2_end; fn++)
         (*fn)();
+
+
+#ifdef DEBUG_DUMP
+    term_prints("Identity mapping mmu: \n\r");
+    mm_dbg_print_mmu();
+#endif
 }

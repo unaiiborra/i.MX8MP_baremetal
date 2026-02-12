@@ -20,9 +20,6 @@
 #endif
 
 
-#define MM_PAGE_BYTES MMU_GRANULARITY_4KB
-
-
 #define NONE (~(size_t)0)
 #define IS_NONE(v) ((v) == NONE)
 
@@ -220,7 +217,7 @@ static inline mm_page build_page(size_t i)
 {
     return (mm_page) {
         .order = s->pages[i].order,
-        .pa = i * MM_PAGE_BYTES,
+        .pa = i * KPAGE_SIZE,
         .data = s->pages[i].page,
     };
 }
@@ -228,7 +225,7 @@ static inline mm_page build_page(size_t i)
 
 size_t page_allocator_bytes_to_order(size_t bytes)
 {
-    size_t pages = div_ceil(bytes, MM_PAGE_BYTES);
+    size_t pages = div_ceil(bytes, KPAGE_SIZE);
     return log2_ceil(pages);
 }
 
@@ -261,7 +258,7 @@ mm_page page_malloc(size_t order, mm_page_data p)
 
 void page_free(mm_page p)
 {
-    size_t i = p.pa / MM_PAGE_BYTES;
+    size_t i = p.pa / KPAGE_SIZE;
 
     ASSERT(i < s->N);
     ASSERT(!s->pages[i].free, "page_allocator: double free");
@@ -291,7 +288,7 @@ void page_free_by_tag(const char* tag)
             continue;
 
         mm_page p = {
-            .pa = i * MM_PAGE_BYTES,
+            .pa = i * KPAGE_SIZE,
             .order = n->order,
             .data = n->page,
         };
@@ -415,7 +412,7 @@ static void reserve_order0(size_t i, mm_page_data data)
 
 static void page_reserve_range(p_uintptr start, size_t pages, mm_page_data data)
 {
-    size_t i = start / MM_PAGE_BYTES;
+    size_t i = start / KPAGE_SIZE;
 
     while (pages--)
         reserve_order0(i++, data);
@@ -432,8 +429,13 @@ p_uintptr page_allocator_update_memblocks(const memblock* mblcks, size_t n)
         ASSERT(mblck.addr == addr);
 
 
+        const void* tag = ((uintptr)mblck.tag > KERNEL_BASE)
+                              ? (const void*)mblck.tag
+                              : (const void*)mm_kpa_to_kva_ptr(mblck.tag);
+
+
         mm_page_data data = (mm_page_data) {
-            .tag = mblck.tag,
+            .tag = tag,
             .device_mem = mblck.device_memory,
             .permanent = mblck.permanent,
         };
@@ -441,7 +443,7 @@ p_uintptr page_allocator_update_memblocks(const memblock* mblcks, size_t n)
 
         page_reserve_range(addr, mblck.blocks, data);
 
-        addr += mblck.blocks * MM_PAGE_BYTES;
+        addr += mblck.blocks * KPAGE_SIZE;
     }
 
     return addr;
@@ -559,7 +561,7 @@ void page_allocator_debug_pages(bool full_print)
         else
             term_printf("\ttag\t= NULL\n\r");
 
-        term_printf("\tphys\t= %p\n\r", i * MM_PAGE_BYTES);
+        term_printf("\tphys\t= %p\n\r", i * KPAGE_SIZE);
         term_printf("\tdevice\t= %s\n\r", n->page.device_mem ? "y" : "n");
 
 

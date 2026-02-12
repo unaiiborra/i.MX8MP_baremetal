@@ -3,18 +3,16 @@
 #include <lib/stdbool.h>
 #include <lib/stdint.h>
 
-typedef struct
-{
+typedef struct {
     // 0 free / 1 locked
     volatile uint32 slock;
 } spinlock_t;
 
-static inline void spinlock_init(spinlock_t* slock)
+static inline void spinlock_init(spinlock_t* l)
 {
-    slock->slock = 0;
+    l->slock = 0;
 }
 
-typedef struct
-{
+typedef struct {
     uint64 flags;
 } irqlock_t;

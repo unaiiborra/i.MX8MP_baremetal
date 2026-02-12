@@ -19,5 +19,6 @@ void kernel_early_init(void)
     uart_early_init(UART2_BASE);
     term_init_early(early_out);
 
+
     mm_early_init(); // returns to the kernel entry
 }

@@ -1,4 +1,7 @@
 #pragma once
+
+#include <lib/stdmacros.h>
+
 /* Standard bitfield types */
 
 /// Standard 8 bit bitfield

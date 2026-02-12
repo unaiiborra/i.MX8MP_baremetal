@@ -12,8 +12,6 @@ HIGH_TEXT=0xffff800040200000
 
 echo "Connecting to JTAG..."
 
-sleep 0.2
-
 JLinkGDBServer -if $IFACE -device $DEVICE -speed $SPEED &
 
 if [[ -e /dev/ttyACM0 ]]; then

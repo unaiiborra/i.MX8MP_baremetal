@@ -4,10 +4,9 @@
 #include <lib/mem.h>
 #include <lib/stdint.h>
 
+#include "kernel/mm.h"
 #include "kernel/panic.h"
 #include "lib/math.h"
-
-const size_t MM_PAGE_BYTES = MMU_GRANULARITY_4KB;
 
 
 extern v_uintptr __text_start[];
@@ -88,7 +87,7 @@ void mm_info_init()
     mm_addr_space_ = mm_ddr_end_;
 
 
-    mm_page_count_ = div_ceil(mm_addr_space_, MM_PAGE_BYTES);
+    mm_page_count_ = div_ceil(mm_addr_space_, KPAGE_SIZE);
 
 
     ASSERT(mm_ddr_size_ <= mm_max_ddr_size_);

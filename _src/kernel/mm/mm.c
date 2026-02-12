@@ -22,6 +22,8 @@ bool mm_kernel_is_relocated()
 }
 
 
+
+
 p_uintptr mm_kva_to_kpa(v_uintptr va)
 {
     extern p_uintptr _mm_kva_to_kpa(v_uintptr pa);
@@ -39,4 +41,11 @@ v_uintptr mm_kpa_to_kva(p_uintptr pa)
     ASSERT(pa < KERNEL_BASE);
 
     return _mm_kpa_to_kva(pa);
+}
+
+
+void mm_dbg_print_mmu()
+{
+    mmu_debug_dump(&mm_mmu_h, MMU_TBL_LO);
+    mmu_debug_dump(&mm_mmu_h, MMU_TBL_HI);
 }

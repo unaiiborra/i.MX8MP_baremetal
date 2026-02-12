@@ -3,15 +3,15 @@
 #include <lib/mem.h>
 
 #include "../malloc/early_kalloc.h"
+#include "../malloc/raw_kmalloc.h"
 #include "../malloc/reserve_malloc.h"
 #include "../mm_info.h"
 #include "../phys/page_allocator.h"
 #include "../reloc/reloc.h"
-#include "../virt/vmalloc/vmalloc.h"
+#include "../virt/vmalloc.h"
 #include "arm/mmu/mmu.h"
 #include "identity_mapping.h"
 #include "kernel/mm.h"
-#include "lib/stdbool.h"
 #include "lib/unit/mem.h"
 
 static void early_reserve_device_and_kernel_mem()
@@ -34,31 +34,10 @@ static void early_reserve_device_and_kernel_mem()
     early_kalloc(kernel_fixed_size, "kernel_fixed", true, false);
 }
 
-/*
-static pv_ptr early_malloc_reserve_allocator()
+
+static p_uintptr mmu_allocator_fn(size_t bytes, size_t align)
 {
-    pv_ptr pv = {
-        .pa = page_malloc(0,
-                          (mm_page_data) {
-                              .device_mem = false,
-                              .permanent = false,
-                              .tag = "reserve_malloc_page",
-                          })
-                  .pa,
-        .va = vmalloc(1, MM_VMEM_HI),
-    };
-
-    ASSERT(ptrs_are_kmapped(pv));
-
-    // TODO: reserve the page info
-
-    return pv;
-}
-*/
-
-static p_uintptr mmu_allocator(size_t bytes, size_t align)
-{
-    ASSERT(bytes == MM_PAGE_BYTES && align == MM_PAGE_BYTES);
+    ASSERT(bytes == KPAGE_SIZE && align == KPAGE_SIZE);
 
     pv_ptr pv = reserve_malloc();
 
@@ -76,18 +55,6 @@ static void mmu_free_fn(p_uintptr addr)
 }
 
 
-static pv_ptr reserve_malloc_allocator(void)
-{
-    const raw_kmalloc_cfg cfg = (raw_kmalloc_cfg) {
-        .assign_phys = true,
-        .fill_reserve = false,
-    };
-
-    v_uintptr va = (v_uintptr)raw_kmalloc(KPAGE_SIZE, "reserve malloc page", &cfg);
-
-    return pv_ptr_new(mm_kva_to_kpa(va), va);
-}
-
 void mm_early_init()
 {
     mm_info_init();
@@ -103,7 +70,6 @@ void mm_early_init()
     term_prints("Identity mapping mmu: \n\r");
     mmu_debug_dump(&mm_mmu_h, MMU_TBL_LO);
     mmu_debug_dump(&mm_mmu_h, MMU_TBL_HI);
-
 #endif
 
     // page allocator
@@ -133,8 +99,7 @@ void mm_early_init()
     ASSERT(ptrs_are_kmapped(first_free_address));
 
 
-    reserve_malloc_reconfig_allocator(mm_kpa_to_kva_ptr(reserve_malloc_allocator));
-    mmu_reconfig_allocators(&mm_mmu_h, mm_kpa_to_kva_ptr(mmu_allocator),
+    mmu_reconfig_allocators(&mm_mmu_h, mm_kpa_to_kva_ptr(mmu_allocator_fn),
                             mm_kpa_to_kva_ptr(mmu_free_fn));
 
 
@@ -145,4 +110,5 @@ void mm_early_init()
 
 void mm_init()
 {
+    raw_kmalloc_init();
 }

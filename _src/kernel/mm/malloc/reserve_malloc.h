@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lib/mem.h>
+#include <lib/stdint.h>
 
 /*
     Reserve allocator that reserves allocated pages (that must be mapped with KERNEL_BASE relation).
@@ -10,15 +11,10 @@
 */
 
 
-#define RESERVE_MALLOC_SIZE 32
+extern const size_t RESERVE_MALLOC_RESERVE_SIZE;
 
-
-/// must provide exactly one page of virtual memory mapped to a phys address
-typedef pv_ptr (*reserve_allocator)(void);
 
 void reserve_malloc_init();
-
-void reserve_malloc_reconfig_allocator(reserve_allocator allocator);
 
 pv_ptr reserve_malloc();
 

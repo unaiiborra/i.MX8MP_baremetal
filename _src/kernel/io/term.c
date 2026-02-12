@@ -8,6 +8,7 @@
 
 #include "kernel/panic.h"
 #include "lib/lock/_lock_types.h"
+#include "lib/lock/corelock.h"
 
 // TODO: needs handling in case of TERM_OUT_RES_NOT_TAKEN results
 
@@ -20,7 +21,7 @@ typedef enum {
 
 static term_early mode;
 static term_out early_output;
-static spinlock_t lock;
+static corelock_t lock;
 
 
 void term_init_early(term_out early_out)
@@ -28,7 +29,7 @@ void term_init_early(term_out early_out)
     mode = TERM_EARLY_MODE;
     early_output = early_out;
 
-    spinlock_init(&lock);
+    corelock_init(&lock);
 
     term_prints("\x1B[2J\x1B[H"); // clear screen
 
@@ -48,7 +49,7 @@ static term_out full_output;
 
 void term_init_full()
 {
-    spinlock_init(&lock);
+    corelock_init(&lock);
 
     mode = TERM_FULL_MODE;
     full_output = NULL;
@@ -57,9 +58,9 @@ void term_init_full()
 
 void term_add_output(term_out out)
 {
-    irqlock_t flags = spin_lock_irqsave(&lock);
+    core_lock(&lock);
     full_output = out;
-    spin_unlock_irqrestore(&lock, flags);
+    core_unlock(&lock);
 }
 
 void term_remove_output(term_out out);
@@ -96,21 +97,21 @@ static inline term_out get_term_out()
 
 void term_printc(const char c)
 {
-    irqlock_t flags = spin_lock_irqsave(&lock);
+    core_lock(&lock);
     get_term_out()(c);
-    spin_unlock_irqrestore(&lock, flags);
+    core_unlock(&lock);
 }
 
 void term_prints(const char* s)
 {
-    irqlock_t flags = spin_lock_irqsave(&lock);
+    core_lock(&lock);
 
     term_out out = get_term_out();
 
     while (*s)
         out(*s++);
 
-    spin_unlock_irqrestore(&lock, flags);
+    core_unlock(&lock);
 }
 
 
@@ -135,7 +136,7 @@ void term_printf(const char* s, ...)
     va_list ap;
     va_start(ap, s);
 
-    irqlock_t flags = spin_lock_irqsave(&lock);
+    core_lock(&lock);
 
     fmt_i = 0;
     str_fmt_print(putfmt, s, ap);
@@ -148,8 +149,7 @@ void term_printf(const char* s, ...)
     while (*s)
         out(*s++);
 
-
-    spin_unlock_irqrestore(&lock, flags);
+    core_unlock(&lock);
 
     va_end(ap);
 }

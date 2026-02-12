@@ -1,4 +1,4 @@
-.global .text
+.section .text
 .align 4
 
 

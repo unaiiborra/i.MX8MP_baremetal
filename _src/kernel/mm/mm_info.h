@@ -38,8 +38,6 @@ size_t mm_info_page_count(void);
 size_t mm_info_mm_addr_space(void);
 
 
-extern const size_t MM_PAGE_BYTES;
-
 extern const mm_ksections MM_KSECTIONS;
 
 /// the kernel mmu handle, not exposed in a global header as only the mm system should access it
