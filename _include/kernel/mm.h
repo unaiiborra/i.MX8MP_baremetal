@@ -3,7 +3,6 @@
 #define KERNEL_ADDR_BITS 48
 #define KERNEL_BASE (~((1ULL << (KERNEL_ADDR_BITS - 1)) - 1))
 
-
 #ifndef __ASSEMBLER__
 #    include <arm/mmu/mmu.h>
 #    include <kernel/panic.h>
@@ -47,8 +46,6 @@ static inline p_uintptr mm_kva_to_kpa(v_uintptr va)
 
 static inline v_uintptr mm_kpa_to_kva(p_uintptr pa)
 {
-    DEBUG_ASSERT(pa | KERNEL_BASE);
-
     return pa | KERNEL_BASE;
 }
 
@@ -88,6 +85,10 @@ static inline bool ptrs_are_kmapped(pv_ptr pv)
     return (pv.pa | KERNEL_BASE) == pv.va;
 }
 
+
+bool mm_va_is_in_kmap_range(void* ptr);
+
+
 typedef struct {
     // if assign_phys == true, the kernel physmap offset is assured (va == pa + KERNEL_BASE),
     // else it is not assured and the phys addr is dynamically assigned
@@ -108,5 +109,25 @@ extern const raw_kmalloc_cfg RAW_KMALLOC_DYNAMIC_CFG;
 
 void* raw_kmalloc(size_t pages, const char* tag, const raw_kmalloc_cfg* cfg);
 void raw_kfree(void* ptr);
+
+
+typedef enum {
+    CACHE_8 = 8,
+    CACHE_16 = 16,
+    CACHE_32 = 32,
+    CACHE_64 = 64,
+    CACHE_128 = 128,
+    CACHE_256 = 256,
+    CACHE_512 = 512,
+    CACHE_1024 = 1024,
+} cache_malloc_size;
+
+void* cache_malloc(cache_malloc_size s);
+void cache_free(cache_malloc_size s, void* ptr);
+
+
+void* kmalloc(size_t bytes);
+void kfree(void* ptr);
+
 
 #endif

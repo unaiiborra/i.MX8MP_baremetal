@@ -6,6 +6,7 @@
 #include <lib/stdbitfield.h>
 #include <lib/stdint.h>
 #include <lib/stdmacros.h>
+
 #include "../vmalloc.h"
 
 typedef bitfield8 bf;
@@ -89,3 +90,7 @@ rva_node* get_new_rva_node();
 
 void free_fva_node(fva_node* node);
 void free_rva_node(rva_node* node);
+
+
+void vmalloc_containers_debug_fva();
+void vmalloc_containers_debug_rva();

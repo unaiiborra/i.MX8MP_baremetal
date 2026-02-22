@@ -498,13 +498,13 @@ size_t vmalloc_get_reserved_bytes()
 }
 
 
-const char* vmalloc_update_tag(void* addr, const char* new_tag)
+const char* vmalloc_update_tag(v_uintptr addr, const char* new_tag)
 {
     ASSERT(addr);
 
     rva_node *node, *prev;
 
-    v_uintptr va = vunsign((v_uintptr)addr);
+    v_uintptr va = vunsign(addr);
 
     bool found = find_rva(va, &node, &prev);
     ASSERT(found, "vmalloc_update_tag: requested va not allocated");
@@ -796,4 +796,56 @@ void vmalloc_debug_reserved()
     term_printf("-------------------------------------------------------------\n\r");
     term_printf("   TOTAL RESERVED: %p bytes (%p pages)\n\r", total, total / KPAGE_SIZE);
     term_printf("=============================================\n\r");
+}
+
+
+void vmalloc_debug_nodes()
+{
+    term_prints("\n\r");
+    term_prints("=============================================\n\r");
+    term_printf("           VMALLOC - FVA NODES\n\r");
+    term_prints("=============================================\n\r");
+
+    fva_node* fva[2] = {fva_kmap_list, fva_dynamic_list};
+
+    term_prints("--- FVA CONTAINERS ---\n\r");
+    vmalloc_containers_debug_fva();
+
+    for (size_t i = 0; i < 2; i++) {
+        (i == 0) ? term_prints("\n\r--- FVA KMAP LIST ---\n\r")
+                 : term_prints("\n\r--- FVA DYNAMIC LIST ---\n\r");
+
+        fva_node* cur = fva[i];
+        size_t j = 0;
+        while (cur) {
+            term_printf("node[%d] %p, %d bytes\n\r", j++, cur->start, cur->size);
+
+            cur = cur->next;
+        }
+    }
+
+
+    term_prints("\n\r");
+    term_prints("=============================================\n\r");
+    term_printf("           VMALLOC - RVA NODES\n\r");
+    term_prints("=============================================\n\r");
+
+    term_prints("---RVA CONTAINERS---\n\r");
+    vmalloc_containers_debug_rva();
+
+    rva_node* rva[2] = {rva_kmap_list, rva_dynamic_list};
+
+    for (size_t i = 0; i < 2; i++) {
+        (i == 0) ? term_prints("\n\r--- RVA KMAP LIST ---\n\r")
+                 : term_prints("\n\r--- RVA DYNAMIC LIST ---\n\r");
+
+        rva_node* cur = rva[i];
+        size_t j = 0;
+        while (cur) {
+            term_printf("node[%d %s] %p, %d bytes\n\r", j++, cur->mdt.info.tag, cur->start,
+                        cur->size);
+
+            cur = cur->next;
+        }
+    }
 }

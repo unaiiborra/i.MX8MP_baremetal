@@ -7,9 +7,10 @@
 #include <lib/stdint.h>
 #include <lib/string.h>
 
-#include "../init/mem_regions/early_kalloc.h"
-#include "../mm_info.h"
-#include "../virt/vmalloc.h"
+#include "../../init/mem_regions/early_kalloc.h"
+#include "../../mm_info.h"
+#include "../../phys/page_allocator.h"
+#include "../../virt/vmalloc.h"
 #include "arm/mmu/mmu.h"
 
 static const char* RESERVE_MALLOC_TAG = "reserved page";
@@ -32,9 +33,7 @@ void reserve_malloc_init()
     for (size_t i = 0; i < RESERVE_MALLOC_SIZE; i++) {
         ASSERT(!bitfield_get(reserved_pages, i));
 
-
         pv_ptr pv = early_kalloc(KPAGE_SIZE, RESERVE_MALLOC_TAG, false, false);
-
 
         ASSERT(pv.pa != 0 && ptrs_are_kmapped(pv));
         reserved_addr[i] = pv;
@@ -60,10 +59,14 @@ pv_ptr reserve_malloc(const char* new_tag)
 
             if (new_tag) {
 #ifdef DEBUG
-                const char* old_tag = vmalloc_update_tag((void*)pmap.va, new_tag);
-                DEBUG_ASSERT(strcmp(old_tag, RESERVE_MALLOC_TAG));
+                const char* v_old_tag = vmalloc_update_tag(pmap.va, new_tag);
+                const char* p_old_tag = page_allocator_update_tag(pmap.pa, new_tag);
+                DEBUG_ASSERT(strcmp(v_old_tag, p_old_tag));
+                DEBUG_ASSERT(strcmp(v_old_tag, RESERVE_MALLOC_TAG));
+                DEBUG_ASSERT(strcmp(p_old_tag, RESERVE_MALLOC_TAG));
 #else
-                vmalloc_update_tag((void*)pmap.va, new_tag);
+                vmalloc_update_tag(pmap.va, new_tag);
+                page_allocator_update_tag(pmap.pa, new_tag);
 #endif
             }
 

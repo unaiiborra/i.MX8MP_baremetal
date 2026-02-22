@@ -7,7 +7,6 @@
 #include <lib/string.h>
 
 #include "kernel/panic.h"
-#include "lib/lock/_lock_types.h"
 #include "lib/lock/corelock.h"
 
 // TODO: needs handling in case of TERM_OUT_RES_NOT_TAKEN results

@@ -82,12 +82,14 @@ typedef struct {
 } vmalloc_va_info;
 
 
-const char* vmalloc_update_tag(void* addr, const char* new_tag);
+const char* vmalloc_update_tag(v_uintptr va, const char* new_tag);
 
 vmalloc_va_info vmalloc_get_addr_info(void* addr);
 
 void vmalloc_debug_free();
 void vmalloc_debug_reserved();
+void vmalloc_debug_nodes();
+
 
 size_t vmalloc_get_free_bytes();
 size_t vmalloc_get_reserved_bytes();

@@ -40,6 +40,9 @@ void kernel_init(void)
     term_add_output(term_output);
 
 
+    mm_init(); // init kmalloc, cache malloc, etc.
+
+
     // Stage 0 (pre irq initialization)
     for (kernel_initcall_t* fn = __kernel_init_stage0_start; fn < __kernel_init_stage0_end; fn++)
         (*fn)();

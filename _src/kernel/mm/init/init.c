@@ -1,18 +1,18 @@
 #include <frdm_imx8mp.h>
 #include <kernel/io/term.h>
+#include <kernel/mm.h>
 #include <kernel/panic.h>
-#include <lib/mem.h>
 
 #include "../init/mem_regions/early_kalloc.h"
-#include "../malloc/raw_kmalloc.h"
-#include "../malloc/reserve_malloc.h"
+#include "../malloc/cache_malloc/cache_malloc.h"
+#include "../malloc/internal/reserve_malloc.h"
+#include "../malloc/raw_kmalloc/raw_kmalloc.h"
 #include "../mm_info.h"
 #include "../phys/page_allocator.h"
 #include "../reloc/reloc.h"
 #include "../virt/vmalloc.h"
 #include "arm/mmu/mmu.h"
 #include "identity_mapping.h"
-#include "kernel/mm.h"
 
 
 static p_uintptr mmu_allocator_fn(size_t bytes, size_t align)
@@ -85,4 +85,6 @@ void mm_early_init()
 void mm_init()
 {
     raw_kmalloc_init();
+
+    cache_malloc_init();
 }

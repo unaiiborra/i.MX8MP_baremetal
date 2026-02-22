@@ -1,17 +1,18 @@
 #include "page_allocator.h"
 
 #include <arm/mmu/mmu.h>
+#include <kernel/io/term.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
+#include <lib/align.h>
 #include <lib/math.h>
 #include <lib/mem.h>
 #include <lib/stdbool.h>
 #include <lib/stdint.h>
 #include <lib/stdmacros.h>
 
+#include "../malloc/raw_kmalloc/raw_kmalloc.h"
 #include "../mm_info.h"
-#include "kernel/io/term.h"
-#include "lib/align.h"
 #include "page.h"
 
 
@@ -38,17 +39,22 @@ typedef struct page_node {
 } page_node;
 
 
-static inline uint32 buddy_of(size_t i, size_t o);
+static inline uint32 buddy_of(uint32 i, uint8 o);
 static inline uint32 parent_at_order(uint32 i, uint8 target_o);
 
 static inline uint8 get_order(page_node* n);
 static inline void set_order(page_node* n, uint8 o);
+
 static inline bool get_free(page_node* n);
 static inline void set_free(page_node* n, bool v);
 
 static inline page_node* get_node(uint32 i);
 
+static inline bool is_in_order_free_list(uint32 i, uint8 o);
+#ifdef DEBUG
 static bool is_in_free_list(uint32 i);
+#endif
+static bool is_inner_idx(uint32 i);
 
 static void push_to_list(uint32 i);
 static void remove_from_list(uint32 i);
@@ -63,7 +69,7 @@ static page_node* nodes;
 static uint32* free_lists;
 
 
-static inline uint32 buddy_of(size_t i, size_t o)
+static inline uint32 buddy_of(uint32 i, uint8 o)
 {
     return i ^ (1U << o);
 }
@@ -116,12 +122,9 @@ static inline page_node* get_node(uint32 i)
     return &nodes[i];
 }
 
-
-static bool is_in_free_list(uint32 i)
+static inline bool is_in_order_free_list(uint32 i, uint8 o)
 {
     page_node* n = get_node(i);
-    uint8 o = get_order(n);
-
     uint32 j = free_lists[o];
     if (IS_NULL_IDX(j))
         return false;
@@ -138,6 +141,32 @@ static bool is_in_free_list(uint32 i)
         else
             return false;
     }
+}
+
+static bool is_in_free_list(uint32 i)
+{
+    return is_in_order_free_list(i, get_order(get_node(i)));
+}
+
+
+static bool is_inner_idx(uint32 i)
+{
+    DEBUG_ASSERT(i < N);
+
+    page_node* n = get_node(i);
+    uint8 order = get_order(n);
+
+    for (size_t target_o = order + 1; target_o <= MAX_ORDER; target_o++) {
+        i = parent_at_order(i, target_o);
+
+        if (is_in_order_free_list(i, target_o)) {
+            DEBUG_ASSERT(get_free(get_node(i)));
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
 
@@ -222,7 +251,8 @@ static void split_to_order_and_pop(uint32 i, uint8 target_o)
 
 static void try_merge(uint32 i)
 {
-    while (true) {
+    loop
+    {
         page_node* n = get_node(i);
         uint8 o = get_order(n);
 
@@ -283,12 +313,77 @@ void page_free(p_uintptr pa)
     uint32 i = pa / KPAGE_SIZE;
     page_node* n = get_node(i);
 
-    if (get_free(n)) {
+
+    if (n->page_data.permanent)
+        PANIC("page_free: cannot free a permanent region");
+
+    if (get_free(n))
         PANIC("page_free: double free");
-    }
+
+    if (is_inner_idx(i))
+        PANIC("page_free: invalid pa provided");
 
     push_to_list(i);
     try_merge(i);
+}
+
+
+const char* page_allocator_update_tag(p_uintptr pa, const char* new_tag)
+{
+    uint32 i = pa / KPAGE_SIZE;
+    page_node* n = get_node(i);
+
+    ASSERT(!is_inner_idx(i));
+    ASSERT(!mm_is_kva(pa));
+    ASSERT(mm_is_kva_ptr(new_tag));
+
+    const char* old = n->page_data.tag;
+    n->page_data.tag = new_tag;
+    return old;
+}
+
+
+bool page_allocator_get_data(p_uintptr pa, mm_page_data* data)
+{
+    uint32 i = pa / KPAGE_SIZE;
+    page_node* n = get_node(i);
+
+
+    raw_kmalloc_lock();
+    __attribute__((cleanup(raw_kmalloc_unlock))) int __defer __attribute__((unused));
+
+
+    if (is_inner_idx(i))
+        return false;
+
+    if (is_in_free_list(get_order(n)))
+        return false;
+
+    *data = n->page_data;
+
+    return true;
+}
+
+
+bool page_allocator_set_data(p_uintptr pa, mm_page_data data)
+{
+    uint32 i = pa / KPAGE_SIZE;
+    page_node* n = get_node(i);
+
+    raw_kmalloc_lock();
+    __attribute__((cleanup(raw_kmalloc_unlock))) int __defer __attribute__((unused));
+
+
+    if (is_inner_idx(i))
+        return false;
+
+    if (is_in_free_list(get_order(n)))
+        return false;
+
+
+    n->page_data = data;
+
+    return true;
 }
 
 

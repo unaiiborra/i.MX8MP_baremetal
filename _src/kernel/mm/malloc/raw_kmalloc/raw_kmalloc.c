@@ -10,11 +10,11 @@
 #include <lib/stdint.h>
 #include <lib/stdmacros.h>
 
-#include "../mm_info.h"
-#include "../phys/page.h"
-#include "../phys/page_allocator.h"
-#include "../virt/vmalloc.h"
-#include "reserve_malloc.h"
+#include "../../mm_info.h"
+#include "../../phys/page.h"
+#include "../../phys/page_allocator.h"
+#include "../../virt/vmalloc.h"
+#include "../internal/reserve_malloc.h"
 
 
 const raw_kmalloc_cfg RAW_KMALLOC_KMAP_CFG = (raw_kmalloc_cfg) {
@@ -150,6 +150,7 @@ static void* raw_kmalloc_dynamic(size_t pages, const char* tag, const raw_kmallo
     return (void*)start;
 }
 
+
 void raw_kmalloc_init()
 {
     corelock_init(&lock);
@@ -234,4 +235,16 @@ void raw_kfree(void* ptr)
             ASSERT(result);
         }
     }
+}
+
+
+void raw_kmalloc_lock()
+{
+    core_lock(&lock);
+}
+
+
+void raw_kmalloc_unlock(int*)
+{
+    core_unlock(&lock);
 }

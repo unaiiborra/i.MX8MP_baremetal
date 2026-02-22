@@ -9,7 +9,7 @@
 #include <lib/stdint.h>
 #include <lib/stdmacros.h>
 
-#include "../../malloc/reserve_malloc.h"
+#include "../../malloc/internal/reserve_malloc.h"
 #include "../../mm_info.h"
 
 

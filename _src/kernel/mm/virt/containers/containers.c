@@ -6,7 +6,8 @@
 #include <lib/stdint.h>
 
 #include "../../init/mem_regions/early_kalloc.h"
-#include "../../malloc/reserve_malloc.h"
+#include "../../malloc/internal/reserve_malloc.h"
+#include "kernel/io/term.h"
 
 
 static vmalloc_container* first_fva_container;
@@ -19,11 +20,14 @@ typedef enum {
 } vmalloc_container_enum;
 
 
-static inline vmalloc_container* vmalloc_container_new(vmalloc_container* last)
+static inline vmalloc_container* vmalloc_container_new(vmalloc_container* last,
+                                                       vmalloc_container_enum e)
 {
     DEBUG_ASSERT(last);
 
-    v_uintptr va = reserve_malloc("vmalloc node container").va;
+    v_uintptr va = reserve_malloc(e == VMALLOC_FVA ? "vmalloc node container fva"
+                                                   : "vmalloc node container rva")
+                       .va;
 
     DEBUG_ASSERT(last->undef.hdr.next == NULL);
     DEBUG_ASSERT((va & (KPAGE_SIZE - 1)) == 0);
@@ -88,7 +92,7 @@ find:
     DEBUG_ASSERT(x++ == 0);
 #endif
 
-    cur = vmalloc_container_new(prev); // it updates prev->next inside
+    cur = vmalloc_container_new(prev, e); // it updates prev->next inside
 
     goto find;
 }
@@ -220,4 +224,46 @@ void free_rva_node(rva_node* node)
             return;
 
     container_free(first_rva_container, container);
+}
+
+
+void vmalloc_containers_debug_fva()
+{
+    vmalloc_container* c = first_fva_container;
+    size_t i = 0;
+
+    while (c) {
+        fva_container_data d = c->fva.data;
+
+        term_printf("\n\r[container %d]\n\r", i++);
+        size_t j = 0;
+
+        while (j < BITFIELD_COUNT_FOR(FVA_NODE_COUNT, bf)) {
+            uint64 bitfield = d.reserved_nodes[j++];
+            term_printf("%b, ", bitfield);
+        }
+
+        c = c->fva.hdr.next;
+    }
+}
+
+void vmalloc_containers_debug_rva()
+{
+    vmalloc_container* c = first_rva_container;
+    size_t i = 0;
+
+    while (c) {
+        rva_container_data d = c->rva.data;
+
+        term_printf("\n\r[container %d]\n\r", i++);
+
+        size_t j = 0;
+
+        while (j < BITFIELD_COUNT_FOR(RVA_NODE_COUNT, bf)) {
+            uint64 bitfield = d.reserved_nodes[j++];
+            term_printf("%b, ", bitfield);
+        }
+
+        c = c->rva.hdr.next;
+    }
 }
