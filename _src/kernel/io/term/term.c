@@ -6,6 +6,7 @@
 #include <lib/stdmacros.h>
 #include <lib/string.h>
 
+#include "buffers.h"
 #include "kernel/panic.h"
 #include "lib/lock/corelock.h"
 
@@ -62,9 +63,11 @@ void term_add_output(term_out out)
     core_unlock(&lock);
 }
 
+void term_set_output(term_out out);
 void term_remove_output(term_out out);
 
 void term_add_input(term_in in);
+void term_set_input(term_in in);
 void term_remove_input(term_in in);
 
 

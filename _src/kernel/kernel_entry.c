@@ -4,6 +4,7 @@
 #include <drivers/interrupts/gicv3/gicv3.h>
 #include <drivers/tmu/tmu.h>
 #include <kernel/init.h>
+#include <kernel/lib/kvec.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
 #include <lib/stdint.h>
@@ -13,7 +14,6 @@
 #include "arm/cpu.h"
 #include "kernel/io/term.h"
 #include "mm/mm_info.h"
-#include "mm/phys/page_allocator.h"
 
 
 // Main function of the kernel, called by the bootloader (/boot/boot.S)
@@ -29,50 +29,43 @@ _Noreturn void kernel_entry()
         }
     }
 
-    __attribute((unused)) mm_ksections x = MM_KSECTIONS;
-
-#define N 1'000'000
-#define M 200
-
-    void** test = kmalloc(sizeof(void*) * N);
-    void** test2 = kmalloc(sizeof(void*) * M);
+    __attribute((unused)) mm_ksections y = MM_KSECTIONS;
 
 
+    term_printf("\n\rSTART\n\r");
+
+
+    kvec k = kvec_new(uint64);
+
+#define N 50'000'000
     for (size_t i = 0; i < N; i++) {
-        test[i] = cache_malloc(CACHE_32);
-        if (i % (N / 100) == 0)
-            term_printf("cache_malloc(CACHE_32): %d / %d\n\r", i, N);
+        kvec_push(&k, &i);
     }
 
-    for (size_t i = 0; i < N; i++) {
-        cache_free(CACHE_32, test[i]);
-        if (i % (N / 100) == 0)
-            term_printf("cache_free(CACHE_32, test[i]): %d / %d\n\r", i, N);
-    }
+    uint64 x;
+    uint64 value = 0xFFFULL;
 
-    for (size_t i = 0; i < N; i++) {
-        test[i] = kmalloc(9);
-        if (i % (N / 100) == 0)
-            term_printf("kmalloc(9): %d / %d\n\r", i, N);
-    }
+    for (size_t i = 0; i < kvec_len(k); i++) {
+        bool result = kvec_get(&k, i, &x);
 
-    for (size_t j = 0; j < M; j++) {
-        test2[j] = kmalloc(2 * KPAGE_SIZE);
-    }
-
-    for (size_t i = 0; i < N; i++) {
-        kfree(test[i]);
-        if (i % (N / 100) == 0)
-            term_printf("kfree(test[i]): %d / %d\n\r", i, N);
-    }
-
-    for (size_t j = 0; j < M; j++) {
-        kfree(test2[j]);
+        ASSERT(result && x == i);
     }
 
 
-    term_prints("->>>>>>>>>\n\r");
-    page_allocator_debug();
+    term_printf("\n\rEND0\n\r");
+
+    for (size_t i = 0; i < kvec_len(k); i++) {
+        bool result = kvec_set(&k, i, &value, &x);
+        ASSERT(result && x == i);
+    }
+
+    for (size_t i = 0; i < kvec_len(k); i++) {
+        ASSERT(kvec_get(&k, i, &x));
+        ASSERT(x == value);
+    }
+
+
+    term_printf("\n\rEND1\n\r");
 
 
     loop asm volatile("wfi");
