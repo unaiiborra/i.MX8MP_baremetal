@@ -1,7 +1,7 @@
 #include "page_allocator.h"
 
 #include <arm/mmu/mmu.h>
-#include <kernel/io/term.h>
+#include <kernel/io/stdio.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
 #include <lib/align.h>
@@ -532,13 +532,13 @@ void page_allocator_debug()
 
 
         if (get_free(n)) {
-            term_printf("\t[F%d-%p] %dp, %p bytes\n\r", get_order(n), addr, pages, bytes);
+            kprintf("\t[F%d-%p] %dp, %p bytes\n\r", get_order(n), addr, pages, bytes);
         }
         else {
             mm_page_data d = n->page_data;
 
-            term_printf("\t[R%d|%s|%p][%s%s] %dp, %p bytes \n\r", get_order(n), d.tag, addr,
-                        d.permanent ? "!" : "-", d.device_mem ? "MMIO" : "RAM", pages, bytes);
+            kprintf("\t[R%d|%s|%p][%s%s] %dp, %p bytes \n\r", get_order(n), d.tag, addr,
+                    d.permanent ? "!" : "-", d.device_mem ? "MMIO" : "RAM", pages, bytes);
         }
 
         i += pages;

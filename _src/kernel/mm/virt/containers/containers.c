@@ -1,5 +1,6 @@
 #include "containers.h"
 
+#include <kernel/io/stdio.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
 #include <lib/stdbitfield.h>
@@ -7,7 +8,6 @@
 
 #include "../../init/mem_regions/early_kalloc.h"
 #include "../../malloc/internal/reserve_malloc.h"
-#include "kernel/io/term.h"
 
 
 static vmalloc_container* first_fva_container;
@@ -235,12 +235,12 @@ void vmalloc_containers_debug_fva()
     while (c) {
         fva_container_data d = c->fva.data;
 
-        term_printf("\n\r[container %d]\n\r", i++);
+        kprintf("\n\r[container %d]\n\r", i++);
         size_t j = 0;
 
         while (j < BITFIELD_COUNT_FOR(FVA_NODE_COUNT, bf)) {
             uint64 bitfield = d.reserved_nodes[j++];
-            term_printf("%b, ", bitfield);
+            kprintf("%b, ", bitfield);
         }
 
         c = c->fva.hdr.next;
@@ -255,13 +255,13 @@ void vmalloc_containers_debug_rva()
     while (c) {
         rva_container_data d = c->rva.data;
 
-        term_printf("\n\r[container %d]\n\r", i++);
+        kprintf("\n\r[container %d]\n\r", i++);
 
         size_t j = 0;
 
         while (j < BITFIELD_COUNT_FOR(RVA_NODE_COUNT, bf)) {
             uint64 bitfield = d.reserved_nodes[j++];
-            term_printf("%b, ", bitfield);
+            kprintf("%b, ", bitfield);
         }
 
         c = c->rva.hdr.next;

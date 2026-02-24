@@ -45,7 +45,7 @@ void* memcpy64(void* dst, const void* src, uint64 size)
 
 #ifdef TEST
 
-#    include "kernel/io/term.h"
+#    include "kernel/io/stdio.h"
 #    include "lib/stdmacros.h"
 
 #    define MEMCPY_TEST_SIZE 1048576 * 4
@@ -71,7 +71,7 @@ void test_memcpy(size_t size_start)
 
         for (size_t j = 0; j < i; j++) {
             if (dst[(sizeof(dst) - 1 - i) + j] != src[(sizeof(src) - 1 - i) + j]) {
-                term_prints("Something went wrong");
+                kprint("Something went wrong");
 
                 loop
                 {
@@ -80,13 +80,13 @@ void test_memcpy(size_t size_start)
         }
 
         if (i % 10000 == 0) {
-            term_prints("i: ");
-            term_prints(stdint_to_ascii((STDINT_UNION) {.int64 = i}, STDINT_UINT64, buf, 100,
-                                        STDINT_BASE_REPR_DEC));
-            term_prints(" ok\n\r");
+            kprint("i: ");
+            kprint(stdint_to_ascii((STDINT_UNION) {.int64 = i}, STDINT_UINT64, buf, 100,
+                                   STDINT_BASE_REPR_DEC));
+            kprint(" ok\n\r");
         }
     }
 
-    term_prints("FINISHED without hang");
+    kprint("FINISHED without hang");
 }
 #endif

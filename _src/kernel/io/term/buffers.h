@@ -1,17 +1,29 @@
 #pragma once
 
 #include <kernel/io/term.h>
+#include <lib/stdmacros.h>
 
 
-void term_buffers_init();
+typedef struct term_buffer {
+    size_t buf_size;
+    struct term_buffer* next;
+    size_t head;
+    size_t tail;
+    uint8 buf[];
+} term_buffer;
 
 
-void UNLOCKED_term_add_output(term_out out);
-void UNLOCKED_term_remove_output(term_out out);
-void UNLOCKED_term_enable_output(term_out out);
-void UNLOCKED_term_disable_output(term_out out);
+static inline term_buffer_handle term_buffer_handle_new()
+{
+    return (term_buffer_handle) {
+        .size = 0,
+        .allocated_size = 0,
+        .head_buf = NULL,
+        .tail_buf = NULL,
+    };
+}
 
-void UNLOCKED_term_add_input(term_in in);
-void UNLOCKED_term_remove_input(term_in in);
-void UNLOCKED_term_enable_input(term_in in);
-void UNLOCKED_term_disable_input(term_in in);
+
+void term_buffer_push(term_buffer_handle* h, char c);
+bool term_buffer_pop(term_buffer_handle* h, char* out);
+bool term_buffer_peek(term_buffer_handle* h, char* out);

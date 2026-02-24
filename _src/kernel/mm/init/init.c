@@ -1,5 +1,5 @@
 #include <frdm_imx8mp.h>
-#include <kernel/io/term.h>
+#include <kernel/io/stdio.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
 
@@ -45,7 +45,7 @@ void mm_early_init()
     // init identity mapping
     early_identity_mapping();
 #ifdef DEBUG
-    term_prints("Identity mapping mmu: \n\r");
+    kprint("Identity mapping mmu: \n\r");
     mmu_debug_dump(&mm_mmu_h, MMU_TBL_LO);
     mmu_debug_dump(&mm_mmu_h, MMU_TBL_HI);
 #endif
@@ -53,7 +53,7 @@ void mm_early_init()
     // page allocator
     page_allocator_init();
 #ifdef DEBUG
-    term_prints("\n\rPage allocator test: \n\r");
+    kprint("\n\rPage allocator test: \n\r");
     page_allocator_debug();
 #endif
 

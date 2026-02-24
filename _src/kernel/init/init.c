@@ -2,12 +2,11 @@
 #include <drivers/interrupts/gicv3/gicv3.h>
 #include <kernel/devices/drivers.h>
 #include <kernel/init.h>
+#include <kernel/io/stdio.h>
+#include <kernel/mm.h>
 #include <kernel/panic.h>
 #include <lib/stdint.h>
 
-#include "drivers/uart/uart.h"
-#include "kernel/io/term.h"
-#include "kernel/mm.h"
 
 extern kernel_initcall_t __kernel_init_stage0_start[];
 extern kernel_initcall_t __kernel_init_stage0_end[];
@@ -27,19 +26,9 @@ KERNEL_INITCALL(rust_kernel_initcalls_stage1, KERNEL_INITCALL_STAGE1);
 KERNEL_INITCALL(rust_kernel_initcalls_stage2, KERNEL_INITCALL_STAGE2);
 
 
-static term_out_result term_output(char c)
-{
-    // TODO: use full uart mode output
-    uart_putc_early(c);
-    return TERM_OUT_RES_OK;
-}
-
 void kernel_init(void)
 {
-    term_init_full();
-    term_add_output(term_output);
-
-
+    io_init(); // init kprint, kprintf...
     mm_init(); // init kmalloc, cache malloc, etc.
 
 

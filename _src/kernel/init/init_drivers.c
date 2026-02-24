@@ -10,9 +10,7 @@
 #include <kernel/irq/interrupts.h>
 #include <lib/stdmacros.h>
 
-#include "../devices/device_map.h"
 #include "drivers/arm_generic_timer/arm_generic_timer.h"
-#include "kernel/mm.h"
 
 // TODO: full remake of this file
 
@@ -24,13 +22,7 @@ static void uart_stage0_()
 
 static void uart_stage1_()
 {
-    // uart_init_stage1(UART_ID_1);
-    // uart_init_stage1(&UART2_DRIVER);
-    // uart_init_stage1(UART_ID_3);
-    // uart_init_stage1(UART_ID_4);
-
-    // TODO: remove this line after implementing the full term module
-    uart_early_init(UART2_BASE + KERNEL_BASE);
+    uart_init_stage1(&UART2_DRIVER);
 }
 
 static void uart_stage2_()

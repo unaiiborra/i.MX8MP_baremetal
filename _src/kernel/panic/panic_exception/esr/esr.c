@@ -2,11 +2,11 @@
 #include "esr.h"
 
 #include <arm/sysregs/sysregs.h>
+#include <kernel/io/stdio.h>
+#include <kernel/panic.h>
 #include <lib/stdint.h>
 
-#include "../../panic_puts.h"
 #include "../panic_exception_handlers.h"
-#include "kernel/panic.h"
 
 /// https://developer.arm.com/documentation/111107/2025-09/AArch64-Registers/ESR-EL1--Exception-Syndrome-Register--EL1-
 
@@ -161,15 +161,16 @@ void print_esr(exception_reason_sysregs* r, panic_exception_type type)
 
     const uint64 esr = r->esr;
 
-    panic_puts("[ESR_EL%d "
-               "(https://developer.arm.com/documentation/111107/2025-12/AArch64-Registers/"
-               "ESR-EL1--Exception-Syndrome-Register--EL1-)]\n",
-               (int)_ARM_currentEL());
-    panic_puts("\traw: %p\n\t(%b)\n", esr, esr);
+    fkprintf(IO_STDPANIC,
+             "[ESR_EL%d "
+             "(https://developer.arm.com/documentation/111107/2025-12/AArch64-Registers/"
+             "ESR-EL1--Exception-Syndrome-Register--EL1-)]\n",
+             (int)_ARM_currentEL());
+    fkprintf(IO_STDPANIC, "\traw: %p\n\t(%b)\n", esr, esr);
 
     /* IRQ / FIQ: ESR no es diagnóstico */
     if (type == PANIC_EXCEPTION_TYPE_IRQ || type == PANIC_EXCEPTION_TYPE_FIQ) {
-        panic_puts("\tnote: asynchronous interrupt, esr not relevant\n");
+        fkprint(IO_STDPANIC, "\tnote: asynchronous interrupt, esr not relevant\n");
         return;
     }
 
@@ -181,8 +182,8 @@ void print_esr(exception_reason_sysregs* r, panic_exception_type type)
 
 
     if (type == PANIC_EXCEPTION_TYPE_SYNC) {
-        panic_puts("\tIL (instruction lenght): %s\n", il ? "32 bit" : "16 bit");
-        panic_puts("\tEC (exception class): %s\n", ec_msg(ec));
+        fkprintf(IO_STDPANIC, "\tIL (instruction lenght): %s\n", il ? "32 bit" : "16 bit");
+        fkprintf(IO_STDPANIC, "\tEC (exception class): %s\n", ec_msg(ec));
 
         switch (ec) {
             case ESR_EC_UNKNOWN:

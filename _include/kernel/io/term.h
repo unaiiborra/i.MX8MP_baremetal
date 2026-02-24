@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lib/lock/corelock.h>
+#include <lib/stdarg.h>
 #include <lib/stdint.h>
 
 typedef enum {
@@ -8,29 +10,35 @@ typedef enum {
 } term_out_result;
 
 
-typedef uint64 term_out_id;
-typedef uint64 term_in_id;
-
-
-typedef char (*term_in)(void);
+typedef uint64 term_id;
 typedef term_out_result (*term_out)(const char c);
 
 
-void term_init_early(term_out early_out);
-void term_init_full();
+typedef struct {
+    size_t size;
+    size_t allocated_size;
+    struct term_buffer* head_buf;
+    struct term_buffer* tail_buf;
+} term_buffer_handle;
 
-void term_add_output(term_out out);
-void term_set_output(term_out out);
-void term_remove_output(term_out out);
+typedef struct {
+    term_id id_;
+    corelock_t lock_;
+    term_out out_;
+    term_buffer_handle buf_;
+} term_handle;
 
-void term_add_input(term_in in);
-void term_set_input(term_in in);
-void term_remove_input(term_in in);
+
+void term_new(term_handle* out, term_out output);
+void term_delete(term_handle* h);
 
 
 /*
     Prints
 */
-void term_printc(const char c);
-void term_prints(const char* s);
-void term_printf(const char* s, ...);
+void term_printc(term_handle* h, const char c);
+void term_prints(term_handle* h, const char* s);
+void term_printf(term_handle* h, const char* s, va_list ap);
+
+
+void term_flush(term_handle* h);

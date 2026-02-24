@@ -9,18 +9,18 @@
 
 #include <arm/mmu/mmu.h>
 #include <frdm_imx8mp.h>
+#include <kernel/io/stdio.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
 #include <lib/align.h>
 #include <lib/lock/spinlock.h>
+#include <lib/math.h>
 #include <lib/mem.h>
 #include <lib/stdbitfield.h>
 #include <lib/stdint.h>
 #include <lib/stdmacros.h>
 
 #include "../../mm_info.h"
-#include "kernel/io/term.h"
-#include "lib/math.h"
 #include "mem_regions.h"
 
 #define N 8
@@ -298,15 +298,15 @@ void early_kalloc_debug()
 
     ek_node* c = first_node;
 
-    term_printf("\n\r[early_kalloc] dump begin");
+    kprint("\n\r[early_kalloc] dump begin");
 
     while (c) {
-        term_printf("\n\r\tnode=%p addr=%p size=%p, tag=%s, free=%s", (void*)c,
-                    (void*)c->memreg.addr, c->memreg.pages * KPAGE_SIZE,
-                    relocated ? mm_as_kva_ptr(c->memreg.tag) : mm_as_kpa_ptr(c->memreg.tag),
-                    c->memreg.free ? "true" : "false");
+        kprintf("\n\r\tnode=%p addr=%p size=%p, tag=%s, free=%s", (void*)c, (void*)c->memreg.addr,
+                c->memreg.pages * KPAGE_SIZE,
+                relocated ? mm_as_kva_ptr(c->memreg.tag) : mm_as_kpa_ptr(c->memreg.tag),
+                c->memreg.free ? "true" : "false");
         c = c->next;
     }
 
-    term_printf("\n\r[early_kalloc] dump end");
+    kprint("\n\r[early_kalloc] dump end");
 }

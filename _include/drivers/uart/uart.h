@@ -1,10 +1,12 @@
 #pragma once
 #include <kernel/devices/device.h>
+#include <kernel/io/term.h>
 #include <lib/lock/spinlock.h>
 #include <lib/mem.h>
 #include <lib/stdbitfield.h>
 #include <lib/stdbool.h>
 #include <lib/stdint.h>
+
 
 #define UART_TX_BUF_SIZE 8192
 #define UART_RX_BUF_SIZE 1024
@@ -12,10 +14,8 @@
 
 typedef struct {
     p_uintptr early_base;
-
     bitfield32 irq_status;
-    spinlock_t rx_lock;
-    spinlock_t tx_lock;
+
     _Alignas(64) struct {
         bool overwrite;
         size_t head;
@@ -38,11 +38,9 @@ void uart_tx_empty_barrier(const driver_handle* h);
 /*
     Early init features
 */
-// cannot pass the handler ptr as the linker will provide the virtual address
 void uart_early_init(p_uintptr base);
 
-void uart_putc_early(const char c);
-void uart_puts_early(const char* s);
+term_out_result uart_putc_early(const char c);
 
 
 /*
@@ -61,11 +59,9 @@ bool uart_read(const driver_handle* h, uint8* data);
 // The kernel should call this fn
 void uart_handle_irq(const driver_handle* h);
 
-void uart_putc_sync(const driver_handle* h, const char c);
-void uart_puts_sync(const driver_handle* h, const char* s);
 
-void uart_putc(const driver_handle* h, const char c);
-void uart_puts(const driver_handle* h, const char* s);
+term_out_result uart_putc_sync(const driver_handle* h, const char c);
+term_out_result uart_putc(const driver_handle* h, const char c);
 
 
 static inline size_t uart_tx_capacity()

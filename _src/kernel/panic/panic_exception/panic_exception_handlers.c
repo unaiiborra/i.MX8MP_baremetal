@@ -1,10 +1,9 @@
 #include "panic_exception_handlers.h"
 
 #include <arm/sysregs/sysregs.h>
+#include <kernel/io/stdio.h>
+#include <kernel/panic.h>
 #include <lib/stdint.h>
-
-#include "../panic_puts.h"
-#include "kernel/panic.h"
 
 
 static inline exception_reason_sysregs get_exception_reason_sysregs()
@@ -38,18 +37,19 @@ static void print_exception_src(panic_exception_src src)
             break;
     }
 
-    panic_puts("exception source: %s\n", msg);
+    fkprintf(IO_STDPANIC, "exception source: %s\n", msg);
 }
 
 
 static void print_raw_sysregs(exception_reason_sysregs* sysregs)
 {
-    panic_puts("sysregs:\n"
-               "\tesr:    %p\n"
-               "\telr:    %p\n"
-               "\tfar:    %p\n"
-               "\tspsr:   %p\n",
-               sysregs->esr, sysregs->elr, sysregs->far, sysregs->spsr);
+    fkprintf(IO_STDPANIC,
+             "sysregs:\n"
+             "\tesr:    %p\n"
+             "\telr:    %p\n"
+             "\tfar:    %p\n"
+             "\tspsr:   %p\n",
+             sysregs->esr, sysregs->elr, sysregs->far, sysregs->spsr);
 }
 
 

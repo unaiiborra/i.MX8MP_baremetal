@@ -171,19 +171,19 @@ panic:
 }
 
 
-static inline void puts_(str_fmt_putc putc, const char* s)
+static inline void puts_(str_fmt_putc putc, void* args, const char* s)
 {
     while (*s)
-        putc(*s++);
+        putc(*s++, args);
 }
 
-void str_fmt_print(str_fmt_putc putc, const char* f, va_list ap)
+void str_fmt_print(str_fmt_putc putc, void* args, const char* f, va_list ap)
 {
     char buf[1024];
 
     while (*f) {
         if (*f != '%') {
-            putc(*f++);
+            putc(*f++, args);
             continue;
         }
 
@@ -191,279 +191,56 @@ void str_fmt_print(str_fmt_putc putc, const char* f, va_list ap)
 
         switch (*f++) {
             case '%':
-                putc('%');
+                putc('%', args);
                 break;
 
             case 'c':
-                putc((char)va_arg(ap, int));
+                putc((char)va_arg(ap, int), args);
                 break;
 
             case 's': {
                 const char* str = va_arg(ap, const char*);
                 if (!str)
                     str = "(null)";
-                puts_(putc, str);
+                puts_(putc, args, str);
                 break;
             }
 
             case 'd':
                 stdint_to_ascii((STDINT_UNION) {.int32 = va_arg(ap, int32)}, STDINT_INT32, buf,
                                 sizeof(buf), STDINT_BASE_REPR_DEC);
-                puts_(putc, buf);
+                puts_(putc, args, buf);
                 break;
 
             case 'u':
                 stdint_to_ascii((STDINT_UNION) {.uint32 = va_arg(ap, uint32)}, STDINT_UINT32, buf,
                                 sizeof(buf), STDINT_BASE_REPR_DEC);
-                puts_(putc, buf);
+                puts_(putc, args, buf);
                 break;
 
             case 'x':
                 stdint_to_ascii((STDINT_UNION) {.uint32 = va_arg(ap, uint32)}, STDINT_UINT32, buf,
                                 sizeof(buf), STDINT_BASE_REPR_HEX);
-                puts_(putc, buf);
+                puts_(putc, args, buf);
                 break;
 
             case 'p':
                 stdint_to_ascii((STDINT_UNION) {.uint64 = (uint64)va_arg(ap, void*)}, STDINT_UINT64,
                                 buf, sizeof(buf), STDINT_BASE_REPR_HEX);
-                puts_(putc, buf);
+                puts_(putc, args, buf);
                 break;
 
             case 'b':
                 stdint_to_ascii((STDINT_UNION) {.uint64 = (uint64)va_arg(ap, void*)}, STDINT_UINT64,
                                 buf, sizeof(buf), STDINT_BASE_REPR_BIN);
-                puts_(putc, buf);
+                puts_(putc, args, buf);
                 break;
 
             default:
-                putc('%');
-                putc(f[-1]);
+                putc('%', args);
+                putc(f[-1], args);
                 break;
         }
     }
 }
 
-
-/*
-void test_stdint_to_ascii(int64 test_v, uint64 buf_size)
-{
-    char buf[buf_size];
-
-    // ==========================
-    // INT8
-    // ==========================
-    stdint_to_ascii((STDINT_UNION){.int8 = (int8)test_v}, STDINT_INT8, buf,
-                    buf_size, STDINT_BASE_REPR_DEC);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_DEC int8: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int8 = (int8)test_v}, STDINT_INT8, buf,
-                    buf_size, STDINT_BASE_REPR_HEX);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_HEX int8: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int8 = (int8)test_v}, STDINT_INT8, buf,
-                    buf_size, STDINT_BASE_REPR_BIN);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_BIN int8: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int8 = (int8)test_v}, STDINT_INT8, buf,
-                    buf_size, STDINT_BASE_REPR_OCT);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_OCT int8: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    // ==========================
-    // UINT8
-    // ==========================
-    stdint_to_ascii((STDINT_UNION){.uint8 = (uint8)test_v}, STDINT_UINT8, buf,
-                    buf_size, STDINT_BASE_REPR_DEC);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_DEC uint8: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint8 = (uint8)test_v}, STDINT_UINT8, buf,
-                    buf_size, STDINT_BASE_REPR_HEX);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_HEX uint8: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint8 = (uint8)test_v}, STDINT_UINT8, buf,
-                    buf_size, STDINT_BASE_REPR_BIN);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_BIN uint8: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint8 = (uint8)test_v}, STDINT_UINT8, buf,
-                    buf_size, STDINT_BASE_REPR_OCT);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_OCT uint8: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    // ==========================
-    // INT16
-    // ==========================
-    stdint_to_ascii((STDINT_UNION){.int16 = (int16)test_v}, STDINT_INT16, buf,
-                    buf_size, STDINT_BASE_REPR_DEC);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_DEC int16: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int16 = (int16)test_v}, STDINT_INT16, buf,
-                    buf_size, STDINT_BASE_REPR_HEX);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_HEX int16: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int16 = (int16)test_v}, STDINT_INT16, buf,
-                    buf_size, STDINT_BASE_REPR_BIN);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_BIN int16: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int16 = (int16)test_v}, STDINT_INT16, buf,
-                    buf_size, STDINT_BASE_REPR_OCT);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_OCT int16: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    // ==========================
-    // UINT16
-    // ==========================
-    stdint_to_ascii((STDINT_UNION){.uint16 = (uint16)test_v}, STDINT_UINT16,
-                    buf, buf_size, STDINT_BASE_REPR_DEC);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_DEC uint16: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint16 = (uint16)test_v}, STDINT_UINT16,
-                    buf, buf_size, STDINT_BASE_REPR_HEX);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_HEX uint16: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint16 = (uint16)test_v}, STDINT_UINT16,
-                    buf, buf_size, STDINT_BASE_REPR_BIN);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_BIN uint16: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint16 = (uint16)test_v}, STDINT_UINT16,
-                    buf, buf_size, STDINT_BASE_REPR_OCT);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_OCT uint16: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    // ==========================
-    // INT32
-    // ==========================
-    stdint_to_ascii((STDINT_UNION){.int32 = (int32)test_v}, STDINT_INT32, buf,
-                    buf_size, STDINT_BASE_REPR_DEC);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_DEC int32: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int32 = (int32)test_v}, STDINT_INT32, buf,
-                    buf_size, STDINT_BASE_REPR_HEX);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_HEX int32: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int32 = (int32)test_v}, STDINT_INT32, buf,
-                    buf_size, STDINT_BASE_REPR_BIN);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_BIN int32: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int32 = (int32)test_v}, STDINT_INT32, buf,
-                    buf_size, STDINT_BASE_REPR_OCT);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_OCT int32: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    // ==========================
-    // UINT32
-    // ==========================
-    stdint_to_ascii((STDINT_UNION){.uint32 = (uint32)test_v}, STDINT_UINT32,
-                    buf, buf_size, STDINT_BASE_REPR_DEC);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_DEC uint32: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint32 = (uint32)test_v}, STDINT_UINT32,
-                    buf, buf_size, STDINT_BASE_REPR_HEX);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_HEX uint32: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint32 = (uint32)test_v}, STDINT_UINT32,
-                    buf, buf_size, STDINT_BASE_REPR_BIN);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_BIN uint32: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint32 = (uint32)test_v}, STDINT_UINT32,
-                    buf, buf_size, STDINT_BASE_REPR_OCT);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_OCT uint32: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    // ==========================
-    // INT64
-    // ==========================
-    stdint_to_ascii((STDINT_UNION){.int64 = test_v}, STDINT_INT64, buf,
-                    buf_size, STDINT_BASE_REPR_DEC);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_DEC int64: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int64 = test_v}, STDINT_INT64, buf,
-                    buf_size, STDINT_BASE_REPR_HEX);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_HEX int64: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int64 = test_v}, STDINT_INT64, buf,
-                    buf_size, STDINT_BASE_REPR_BIN);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_BIN int64: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.int64 = test_v}, STDINT_INT64, buf,
-                    buf_size, STDINT_BASE_REPR_OCT);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_OCT int64: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    // ==========================
-    // UINT64
-    // ==========================
-    stdint_to_ascii((STDINT_UNION){.uint64 = (uint64)test_v}, STDINT_UINT64,
-                    buf, buf_size, STDINT_BASE_REPR_DEC);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_DEC uint64: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint64 = (uint64)test_v}, STDINT_UINT64,
-                    buf, buf_size, STDINT_BASE_REPR_HEX);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_HEX uint64: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint64 = (uint64)test_v}, STDINT_UINT64,
-                    buf, buf_size, STDINT_BASE_REPR_BIN);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_BIN uint64: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-
-    stdint_to_ascii((STDINT_UNION){.uint64 = (uint64)test_v}, STDINT_UINT64,
-                    buf, buf_size, STDINT_BASE_REPR_OCT);
-    uart_puts(UART_ID_2, "STDINT_BASE_REPR_OCT uint64: ");
-    uart_puts(UART_ID_2, buf);
-    uart_puts(UART_ID_2, "\r\n");
-}
-*/

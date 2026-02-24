@@ -1,5 +1,6 @@
 #pragma once
 
+
 #define ANSI_BG_RED "\x1b[41m"
 #define ANSI_CLEAR "\x1b[0m"
 #define ANSI_CLS "\x1b[2J"
@@ -15,4 +16,4 @@
 #define ANSI_ERASE_LINE "\x1b[K"
 
 
-void panic_puts(const char* s, ...);
+

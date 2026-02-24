@@ -12,6 +12,7 @@
 
 #include "../mm_info.h"
 #include "containers/containers.h"
+#include "kernel/io/stdio.h"
 #include "lib/align.h"
 #include "lib/stdbitfield.h"
 #include "lib/unit/mem.h"
@@ -709,13 +710,13 @@ void vmalloc_debug_free()
     size_t va_bits = mmu_hi_va_bits(&mm_mmu_h);
     v_uintptr mask = (1ULL << va_bits) - 1;
 
-    term_printf("\n\r");
-    term_printf("=============================================\n\r");
-    term_printf("           VMALLOC - FREE REGIONS            \n\r");
-    term_printf("=============================================\n\r");
-    term_printf("   START              END                SIZE (bytes / pages)\n\r");
-    term_printf("-------------------------------------------------------------\n\r");
-    term_printf("[K == kmapped, - == dynamic]\n\r");
+    kprint("\n\r");
+    kprint("=============================================\n\r");
+    kprint("           VMALLOC - FREE REGIONS            \n\r");
+    kprint("=============================================\n\r");
+    kprint("   START              END                SIZE (bytes / pages)\n\r");
+    kprint("-------------------------------------------------------------\n\r");
+    kprint("[K == kmapped, - == dynamic]\n\r");
 
     size_t total = 0;
     fva_node* lists[2] = {fva_kmap_list, fva_dynamic_list};
@@ -736,17 +737,16 @@ void vmalloc_debug_free()
 
             size_t pages = cur->size / KPAGE_SIZE;
 
-            term_printf("   [%p - %p)   %p B  (%p pages)    [%c]\n\r", start, end, cur->size, pages,
-                        k);
+            kprintf("   [%p - %p)   %p B  (%p pages)    [%c]\n\r", start, end, cur->size, pages, k);
 
             total += cur->size;
             cur = cur->next;
         }
     }
 
-    term_printf("-------------------------------------------------------------\n\r");
-    term_printf("   TOTAL FREE: %p bytes (%p pages)\n\r", total, total / KPAGE_SIZE);
-    term_printf("=============================================\n\r");
+    kprint("-------------------------------------------------------------\n\r");
+    kprintf("   TOTAL FREE: %p bytes (%p pages)\n\r", total, total / KPAGE_SIZE);
+    kprint("=============================================\n\r");
 }
 
 
@@ -755,12 +755,12 @@ void vmalloc_debug_reserved()
     size_t va_bits = mmu_hi_va_bits(&mm_mmu_h);
     v_uintptr mask = (1ULL << va_bits) - 1;
 
-    term_printf("\n\r");
-    term_printf("=============================================\n\r");
-    term_printf("         VMALLOC - RESERVED REGIONS\n\r");
-    term_printf("=============================================\n\r");
-    term_printf("   START              END                SIZE    FLAGS\n\r");
-    term_printf("-------------------------------------------------------------\n\r");
+    kprint("\n\r");
+    kprint("=============================================\n\r");
+    kprint("         VMALLOC - RESERVED REGIONS\n\r");
+    kprint("=============================================\n\r");
+    kprint("   START              END                SIZE    FLAGS\n\r");
+    kprint("-------------------------------------------------------------\n\r");
 
     size_t total = 0;
     rva_node* lists[2] = {rva_kmap_list, rva_dynamic_list};
@@ -780,70 +780,69 @@ void vmalloc_debug_reserved()
 
             size_t pages = cur->size / KPAGE_SIZE;
 
-            term_printf("   [%p - %p)   %p B (%d p)   ", start, end, cur->size, pages);
-            term_printf("[%c", cur->mdt.info.kmapped ? 'K' : '-');
-            term_printf("%c", cur->mdt.info.pa_assigned ? 'P' : '-');
-            term_printf("%c", cur->mdt.info.device_mem ? 'D' : '-');
-            term_printf("%c]", cur->mdt.info.permanent ? '!' : '-');
+            kprintf("   [%p - %p)   %p B (%d p)   ", start, end, cur->size, pages);
+            kprintf("[%c", cur->mdt.info.kmapped ? 'K' : '-');
+            kprintf("%c", cur->mdt.info.pa_assigned ? 'P' : '-');
+            kprintf("%c", cur->mdt.info.device_mem ? 'D' : '-');
+            kprintf("%c]", cur->mdt.info.permanent ? '!' : '-');
 
-            term_printf("\t%s\n\r", cur->mdt.info.tag);
+            kprintf("\t%s\n\r", cur->mdt.info.tag);
 
             total += cur->size;
             cur = cur->next;
         }
     }
 
-    term_printf("-------------------------------------------------------------\n\r");
-    term_printf("   TOTAL RESERVED: %p bytes (%p pages)\n\r", total, total / KPAGE_SIZE);
-    term_printf("=============================================\n\r");
+    kprint("-------------------------------------------------------------\n\r");
+    kprintf("   TOTAL RESERVED: %p bytes (%p pages)\n\r", total, total / KPAGE_SIZE);
+    kprint("=============================================\n\r");
 }
 
 
 void vmalloc_debug_nodes()
 {
-    term_prints("\n\r");
-    term_prints("=============================================\n\r");
-    term_printf("           VMALLOC - FVA NODES\n\r");
-    term_prints("=============================================\n\r");
+    kprint("\n\r");
+    kprint("=============================================\n\r");
+    kprint("           VMALLOC - FVA NODES\n\r");
+    kprint("=============================================\n\r");
 
     fva_node* fva[2] = {fva_kmap_list, fva_dynamic_list};
 
-    term_prints("--- FVA CONTAINERS ---\n\r");
+    kprint("--- FVA CONTAINERS ---\n\r");
     vmalloc_containers_debug_fva();
 
     for (size_t i = 0; i < 2; i++) {
-        (i == 0) ? term_prints("\n\r--- FVA KMAP LIST ---\n\r")
-                 : term_prints("\n\r--- FVA DYNAMIC LIST ---\n\r");
+        (i == 0) ? kprint("\n\r--- FVA KMAP LIST ---\n\r")
+                 : kprint("\n\r--- FVA DYNAMIC LIST ---\n\r");
 
         fva_node* cur = fva[i];
         size_t j = 0;
         while (cur) {
-            term_printf("node[%d] %p, %d bytes\n\r", j++, cur->start, cur->size);
+            kprintf("node[%d] %p, %d bytes\n\r", j++, cur->start, cur->size);
 
             cur = cur->next;
         }
     }
 
 
-    term_prints("\n\r");
-    term_prints("=============================================\n\r");
-    term_printf("           VMALLOC - RVA NODES\n\r");
-    term_prints("=============================================\n\r");
+    kprint("\n\r");
+    kprint("=============================================\n\r");
+    kprint("           VMALLOC - RVA NODES\n\r");
+    kprint("=============================================\n\r");
 
-    term_prints("---RVA CONTAINERS---\n\r");
+    kprint("---RVA CONTAINERS---\n\r");
     vmalloc_containers_debug_rva();
 
     rva_node* rva[2] = {rva_kmap_list, rva_dynamic_list};
 
     for (size_t i = 0; i < 2; i++) {
-        (i == 0) ? term_prints("\n\r--- RVA KMAP LIST ---\n\r")
-                 : term_prints("\n\r--- RVA DYNAMIC LIST ---\n\r");
+        (i == 0) ? kprint("\n\r--- RVA KMAP LIST ---\n\r")
+                 : kprint("\n\r--- RVA DYNAMIC LIST ---\n\r");
 
         rva_node* cur = rva[i];
         size_t j = 0;
         while (cur) {
-            term_printf("node[%d %s] %p, %d bytes\n\r", j++, cur->mdt.info.tag, cur->start,
-                        cur->size);
+            kprintf("node[%d %s] %p, %d bytes\n\r", j++, cur->mdt.info.tag, cur->start, cur->size);
 
             cur = cur->next;
         }

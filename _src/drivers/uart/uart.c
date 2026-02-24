@@ -1,12 +1,13 @@
 #include <drivers/uart/uart.h>
 #include <drivers/uart/uart_raw.h>
+#include <kernel/mm.h>
 #include <kernel/panic.h>
-#include <lib/lock/spinlock.h>
+#include <lib/lock/irqlock.h>
 #include <lib/stdint.h>
 
 #include "drivers/uart/raw/uart_usr2.h"
-#include "lib/lock/irqlock.h"
-#include "lib/lock/spinlock_irq.h"
+#include "kernel/devices/device.h"
+#include "kernel/io/term.h"
 #include "lib/mem.h"
 #include "lib/stdbitfield.h"
 #include "lib/stdmacros.h"
@@ -95,21 +96,11 @@ void uart_reset(const driver_handle* h)
     for (size_t i = 0; i < UART_RX_BUF_SIZE; i++) {
         state->rx.buf[i] = 0;
     }
-
-    state->rx_lock.slock = 0;
-    state->tx_lock.slock = 0;
 }
 
 bool uart_read(const driver_handle* h, uint8* data)
 {
-    bool new_data;
-
-    irq_spinlocked(&uart_get_state_(h)->rx_lock)
-    {
-        new_data = uart_rxbuf_pop(h, data);
-    }
-
-    return new_data;
+    return uart_rxbuf_pop(h, data);
 }
 
 /*
@@ -365,9 +356,8 @@ static void handle_RRDY_(const driver_handle* h)
     } while (!UART_UTS_RXEMPTY_get(UART_UTS_read(h->base)));
 }
 
-// UART_IRQ_SRC_TRDY: Tx hardware fifo reached less or the stablished value (4
-// for UART_init), it tries to fill the buffer again with the data saved in the
-// software driver tx buffer
+// UART_IRQ_SRC_TRDY: Tx hardware fifo reached less or the stablished value , it tries to fill the
+// buffer again with the data saved in the software driver tx buffer
 static void handle_TRDY_(const driver_handle* h)
 {
 #ifdef TEST
@@ -503,72 +493,36 @@ void uart_init_stage1(const driver_handle* h)
         put
     ------------
 */
-static inline void UNLOCKED_putc_sync_(const driver_handle* h, const uint8 c)
+
+
+term_out_result uart_putc_sync(const driver_handle* h, const char c)
 {
 #ifdef TEST
     uart_check_handle_(h);
 #endif
 
     while (UART_tx_fifo_full_(h->base)) {
-        for (size_t i = 0; i < 3000; i++)
-            asm volatile("nop");
+        asm volatile("nop");
     }
 
     UART_UTXD_write(h->base, c);
+
+    return TERM_OUT_RES_OK;
 }
 
 
-void uart_putc_sync(const driver_handle* h, const char c)
-{
-    irq_spinlocked(&uart_get_state_(h)->tx_lock)
-    {
-        UNLOCKED_putc_sync_(h, c);
-    }
-}
-
-void uart_puts_sync(const driver_handle* h, const char* s)
-{
-    if (!s)
-        return;
-
-    irq_spinlocked(&uart_get_state_(h)->tx_lock)
-    {
-        while (*s)
-            UNLOCKED_putc_sync_(h, *s++);
-    }
-}
-
-
-static inline void UNLOCKED_putc_(const driver_handle* h, const uint8 c)
+term_out_result uart_putc(const driver_handle* h, const char c)
 {
     bool txbuf_full = !uart_txbuf_push(h, c);
 
     if (txbuf_full)
-        PANIC("txbuf filled"); // TODO: handle better
+        return TERM_OUT_RES_NOT_TAKEN;
 
     // If TRDY is not enabled enable it
     if (!uart_get_irq_state_(h, UART_IRQ_SRC_TRDY))
         uart_set_irq_state_(h, UART_IRQ_SRC_TRDY, true);
-}
 
-void uart_putc(const driver_handle* h, const char c)
-{
-    irq_spinlocked(&uart_get_state_(h)->tx_lock)
-    {
-        UNLOCKED_putc_(h, c);
-    }
-}
-
-void uart_puts(const driver_handle* h, const char* s)
-{
-    if (!s)
-        return;
-
-    irq_spinlocked(&uart_get_state_(h)->tx_lock)
-    {
-        while (*s)
-            UNLOCKED_putc_(h, *s++);
-    }
+    return TERM_OUT_RES_OK;
 }
 
 
@@ -638,18 +592,12 @@ void uart_early_init(p_uintptr base)
 }
 
 
-void uart_putc_early(const char c)
+term_out_result uart_putc_early(const char c)
 {
-    while (UART_tx_fifo_full_(early_base))
-        for (size_t i = 0; i < 5000; i++)
-            asm volatile("nop");
-
-    UART_UTXD_write(early_base, c);
-}
-
-
-void uart_puts_early(const char* s)
-{
-    while (*s)
-        uart_putc_early(*s++);
+    return uart_putc_sync(
+        &(driver_handle) {
+            .base = mm_as_kva(early_base),
+            .state = (void*)(1),
+        },
+        c);
 }

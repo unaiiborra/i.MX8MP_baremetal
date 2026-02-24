@@ -1,18 +1,17 @@
 #include "reloc.h"
 
+#include <arm/mmu/mmu.h>
+#include <kernel/mm.h>
+#include <kernel/panic.h>
 #include <lib/mem.h>
 #include <lib/stdbool.h>
 #include <lib/stdmacros.h>
+#include <lib/unit/mem.h>
 
 #include "../init/mem_regions/early_kalloc.h"
 #include "../mm_info.h"
 #include "../phys/page_allocator.h"
 #include "../virt/vmalloc.h"
-#include "arm/mmu/mmu.h"
-#include "kernel/io/term.h"
-#include "kernel/mm.h"
-#include "kernel/panic.h"
-#include "lib/unit/mem.h"
 
 
 extern _Noreturn void _jmp_to_with_offset(void* to, size_t offset);
@@ -44,7 +43,6 @@ void reloc_cfg_end()
         mm_kpa_to_kva(mblcks[n - 1].addr + (mblcks[n - 1].pages * KPAGE_SIZE));
 
 
-    term_printf("AWEBOO-----------------------\n\r\n\n\n");
     page_allocator_debug();
     vmalloc_debug_free();
     vmalloc_debug_reserved();

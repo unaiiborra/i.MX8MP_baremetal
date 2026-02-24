@@ -7,151 +7,142 @@
 #include <lib/string.h>
 
 #include "buffers.h"
+#include "kernel/mm.h"
 #include "kernel/panic.h"
 #include "lib/lock/corelock.h"
-
-// TODO: needs handling in case of TERM_OUT_RES_NOT_TAKEN results
-
-typedef enum {
-    TERM_UNINIT = 0,
-    TERM_EARLY_MODE,
-    TERM_FULL_MODE,
-} term_early;
+#include "lib/lock/irqlock.h"
+#include "lib/stdint.h"
 
 
-static term_early mode;
-static term_out early_output;
-static corelock_t lock;
+static uint64 uniqueid_count;
 
-
-void term_init_early(term_out early_out)
+void term_new(term_handle* out, term_out output)
 {
-    mode = TERM_EARLY_MODE;
-    early_output = early_out;
+    *out = (term_handle) {
+        .id_ = __atomic_add_fetch(&uniqueid_count, 1, __ATOMIC_SEQ_CST),
+        .lock_ = {0},
+        .buf_ = term_buffer_handle_new(),
+        .out_ = output,
+    };
 
-    corelock_init(&lock);
-
-    term_prints("\x1B[2J\x1B[H"); // clear screen
-
-#ifdef DEBUG
-    term_prints("[term_early]: initialized\n\r");
-#endif
+    corelock_init(&out->lock_);
 }
 
 
-/*
-    TODO:
-    This is a temporal solution before having kmalloc, it just is a static variable that saves one
-    output. When kmalloc is designed this must be removed
-*/
-static term_out full_output;
-
-
-void term_init_full()
+void term_delete(term_handle* h)
 {
-    corelock_init(&lock);
+    term_buffer* cur = h->buf_.head_buf;
 
-    mode = TERM_FULL_MODE;
-    full_output = NULL;
-}
+    while (cur) {
+        term_buffer* next = cur->next;
 
+        kfree(cur);
 
-void term_add_output(term_out out)
-{
-    core_lock(&lock);
-    full_output = out;
-    core_unlock(&lock);
-}
-
-void term_set_output(term_out out);
-void term_remove_output(term_out out);
-
-void term_add_input(term_in in);
-void term_set_input(term_in in);
-void term_remove_input(term_in in);
-
-
-/*
-    Prints
-*/
-static inline term_out get_term_out()
-{
-    switch (mode) {
-        case TERM_UNINIT:
-            goto hang;
-        case TERM_EARLY_MODE:
-            if (UNLIKELY(!early_output))
-                goto hang;
-
-            return early_output;
-        case TERM_FULL_MODE:
-            if (UNLIKELY(!full_output))
-                goto hang;
-
-            return full_output;
-        default:
-            goto hang;
+        cur = next;
     }
 
-    loop hang : asm volatile("wfi");
+    *h = (term_handle) {0};
 }
 
 
-void term_printc(const char c)
+/*
+    It attempts to push the character to the out fn, if it is not taken, saves it in a buffer. If
+    later calls are made to this fn, if the term buffer is not empty, it will push directly into the
+    buffer in order to mantain coherency of the lifo, (even if the out fn could respond with an OK).
+*/
+static inline void putc(term_handle* h, char c)
 {
-    core_lock(&lock);
-    get_term_out()(c);
-    core_unlock(&lock);
+    if (h->buf_.size == 0) {
+        term_out_result result = h->out_(c);
+
+        if (result == TERM_OUT_RES_OK)
+            return;
+    }
+
+    term_buffer_push(&h->buf_, c);
 }
 
-void term_prints(const char* s)
+
+void term_printc(term_handle* h, const char c)
 {
-    core_lock(&lock);
+    irqlocked()
+    {
+        core_lock(&h->lock_);
 
-    term_out out = get_term_out();
+        putc(h, c);
 
-    while (*s)
-        out(*s++);
+        core_unlock(&h->lock_);
+    }
+}
 
-    core_unlock(&lock);
+void term_prints(term_handle* h, const char* s)
+{
+    irqlocked()
+    {
+        core_lock(&h->lock_);
+
+        while (*s)
+            putc(h, *s++);
+
+        core_unlock(&h->lock_);
+    }
 }
 
 
-// TODO: allow variable formatting with allocations etc.
-
-static char fmt_buf[4096];
-static size_t fmt_i;
-
-static void putfmt(char c)
+static void putfmt(char c, void* args)
 {
-    fmt_buf[fmt_i++] = c;
+    term_handle* h = args;
 
-    ASSERT(fmt_i < 4096);
+    putc(h, c);
 }
 
 
 /// The formatting happens before the printing because in future versions checking the result of the
 /// term_out will be needed and that cannot happen inside the fmt fn. This fn will need a big remake
 /// when kmalloc is implemented TODO:
-void term_printf(const char* s, ...)
+void term_printf(term_handle* h, const char* s, va_list ap)
 {
-    va_list ap;
-    va_start(ap, s);
+    irqlocked()
+    {
+        core_lock(&h->lock_);
 
-    core_lock(&lock);
+        str_fmt_print(putfmt, h, s, ap);
 
-    fmt_i = 0;
-    str_fmt_print(putfmt, s, ap);
-    fmt_buf[fmt_i] = '\0';
-    fmt_i = 0;
+        core_unlock(&h->lock_);
+    }
+}
 
-    term_out out = get_term_out();
 
-    s = fmt_buf;
-    while (*s)
-        out(*s++);
+void term_flush(term_handle* h)
+{
+    DEBUG_ASSERT(h);
 
-    core_unlock(&lock);
+    if (h->buf_.size == 0)
+        return;
 
-    va_end(ap);
+
+    __attribute((unused)) char peek, pop;
+
+
+    irqlocked()
+    {
+        core_lock(&h->lock_);
+
+        loop
+        {
+            if (!term_buffer_peek(&h->buf_, &peek))
+                break;
+
+            term_out_result res = h->out_(peek);
+
+            if (res == TERM_OUT_RES_NOT_TAKEN)
+                break;
+
+            __attribute((unused)) bool pop_res = term_buffer_pop(&h->buf_, &pop);
+
+            DEBUG_ASSERT(pop_res && peek == pop);
+        }
+
+        core_unlock(&h->lock_);
+    }
 }

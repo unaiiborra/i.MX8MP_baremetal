@@ -39,5 +39,5 @@ char* stdint_to_ascii(STDINT_UNION n, STDINT_TYPES n_type, char* buf, uint64 buf
 void test_stdint_to_ascii(int64 test_v, uint64 buf_size);
 
 
-typedef void (*str_fmt_putc)(char c);
-void str_fmt_print(str_fmt_putc putc, const char* s, va_list ap);
+typedef void (*str_fmt_putc)(char c, void* args);
+void str_fmt_print(str_fmt_putc putc, void* args, const char* s, va_list ap);

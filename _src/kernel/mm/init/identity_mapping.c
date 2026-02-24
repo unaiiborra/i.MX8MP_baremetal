@@ -1,6 +1,9 @@
 #include "identity_mapping.h"
 
 #include <arm/mmu/mmu.h>
+#include <kernel/io/stdio.h>
+#include <kernel/mm.h>
+#include <kernel/panic.h>
 #include <lib/mem.h>
 #include <lib/stdint.h>
 #include <lib/stdmacros.h>
@@ -8,10 +11,6 @@
 
 #include "../init/mem_regions/early_kalloc.h"
 #include "../mm_info.h"
-#include "arm/mmu/mmu.h"
-#include "kernel/io/term.h"
-#include "kernel/mm.h"
-#include "kernel/panic.h"
 #include "mem_regions/mem_regions.h"
 
 
@@ -34,7 +33,7 @@ static void im_free(void* addr)
     stdint_to_ascii((STDINT_UNION) {.uint64 = (v_uintptr)addr}, STDINT_UINT64, buf, 200,
                     STDINT_BASE_REPR_HEX);
 
-    term_printf("%s\n\r", buf);
+    kprintf("%s\n\r", buf);
 
 #ifndef DEBUG
     PANIC("The early identity mapping allocations should not free any tables");

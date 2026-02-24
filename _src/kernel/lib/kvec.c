@@ -1,3 +1,4 @@
+#include <kernel/io/stdio.h>
 #include <kernel/lib/kvec.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
@@ -6,8 +7,6 @@
 #include <lib/stdbool.h>
 #include <lib/stdint.h>
 #include <lib/stdmacros.h>
-
-#include "kernel/io/term.h"
 
 
 #define MIN_VEC_ITEMS 8
@@ -42,7 +41,9 @@ static void upsize_vec(kvec* k)
 
     size_t bytes = remalloc ? (k->container_bytes_ * 2) : pow2_bytes_for(k->T_size_, MIN_VEC_ITEMS);
 
-    term_printf("upsize_vec: from %p to %p\n\r", k->container_bytes_, bytes);
+    kprintf("upsize_vec: from %p to %p\n\r", k->container_bytes_, bytes);
+
+
 
     void* new_container = kmalloc(bytes);
 

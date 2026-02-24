@@ -1,12 +1,14 @@
 #include "kernel/panic.h"
 
 #include <arm/mmu/mmu.h>
+#include <kernel/io/stdio.h>
 #include <lib/lock/spinlock_irq.h>
 #include <lib/stdarg.h>
 #include <lib/stdmacros.h>
 #include <lib/string.h>
 
-#include "lib/stdint.h"
+#include "arm/exceptions/exceptions.h"
+#include "lib/stdbool.h"
 #include "panic_exception/panic_exception_handlers.h"
 #include "panic_puts.h"
 
@@ -19,7 +21,7 @@ typedef enum {
 
 static void default_info_print(panic_info* info)
 {
-    panic_puts("\n" ANSI_BG_RED "\n[PANIC]\n");
+    fkprint(IO_STDPANIC, "\n" ANSI_BG_RED "\n[PANIC]\n");
 
     char* reason;
     switch (info->reason) {
@@ -33,27 +35,28 @@ static void default_info_print(panic_info* info)
             reason = "UNDEFINED PANIC REASON!\n";
     }
 
-    panic_puts("reason:  %s\n", reason);
+    fkprintf(IO_STDPANIC, "reason:  %s\n", reason);
 
-    panic_puts("mmu:     %s\n", mmu_is_active() ? "enabled" : "disabled");
+    fkprintf(IO_STDPANIC, "mmu:     %s\n", mmu_is_active() ? "enabled" : "disabled");
 
-    panic_puts("message: %s\n", info->message);
+    fkprintf(IO_STDPANIC, "message: %s\n", info->message);
 
 
     const char* enabled = "enabled";
     const char* disabled = "disabled";
 #define ENABLED_STR(cond) cond ? enabled : disabled
 
-    panic_puts("\nexception status:\n"
-               "\tfiq:    %s\n"
-               "\tirq:    %s\n"
-               "\tserror: %s\n"
-               "\tdebug:  %s\n",
+    fkprintf(IO_STDPANIC,
+             "\nexception status:\n"
+             "\tfiq:    %s\n"
+             "\tirq:    %s\n"
+             "\tserror: %s\n"
+             "\tdebug:  %s\n",
 
-               ENABLED_STR(info->exception_status.fiq),    //
-               ENABLED_STR(info->exception_status.irq),    //
-               ENABLED_STR(info->exception_status.serror), //
-               ENABLED_STR(info->exception_status.debug)   //
+             ENABLED_STR(info->exception_status.fiq),    //
+             ENABLED_STR(info->exception_status.irq),    //
+             ENABLED_STR(info->exception_status.serror), //
+             ENABLED_STR(info->exception_status.debug)   //
     );
 }
 
@@ -101,24 +104,31 @@ static void handle_manual_abort_panic(panic_info* info)
             lang_str = "undefined";
     }
 
-    panic_puts("language:%s\n", lang_str);
+    fkprintf(IO_STDPANIC, "language:%s\n", lang_str);
 
     /*
         file + line + col
     */
     panic_location location = info->info.manual_abort.location;
 
-    panic_puts("file:   %s\n", location.file);
+    fkprintf(IO_STDPANIC, "file:   %s\n", location.file);
 
     if (location.line >= 0)
-        panic_puts("line:   %d\n", location.line);
+        fkprintf(IO_STDPANIC, "line:   %d\n", location.line);
     if (location.col >= 0)
-        panic_puts("col:    %d\n", location.col);
+        fkprintf(IO_STDPANIC, "col:    %d\n", location.col);
 }
 
 
 static void handle_panic(panic_info* info, panic_recovery recovery)
 {
+    arm_exceptions_set_status((arm_exception_status) {
+        false,
+        false,
+        false,
+        false,
+    });
+
     if (!info)
         goto hang;
 
@@ -129,16 +139,16 @@ static void handle_panic(panic_info* info, panic_recovery recovery)
             recovery = PANIC_UNRECOVERABLE;
             break;
         case PANIC_REASON_EXCEPTION:
-            panic_puts("\n[EXCEPTION INFO]\n");
+            fkprint(IO_STDPANIC, "\n[EXCEPTION INFO]\n");
             handle_exception_panic(info);
             break;
         case PANIC_REASON_MANUAL_ABORT:
-            panic_puts("\n[ABORT INFO]\n");
+            fkprint(IO_STDPANIC, "\n[ABORT INFO]\n");
             handle_manual_abort_panic(info);
             break;
     }
 
-    panic_puts(ANSI_CLEAR);
+    fkprint(IO_STDPANIC, ANSI_CLEAR);
 
     if (recovery == PANIC_UNRECOVERABLE)
         loop hang : asm volatile("wfe");
