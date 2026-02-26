@@ -12,8 +12,39 @@
 #include <lib/string.h>
 
 #include "arm/cpu.h"
+#include "arm/mmu/mmu.h"
+#include "drivers/uart/uart.h"
+#include "kernel/devices/drivers.h"
 #include "kernel/io/stdio.h"
+#include "lib/stdbool.h"
 #include "mm/mm_info.h"
+#include "mm/phys/page_allocator.h"
+#include "mm/virt/vmalloc.h"
+
+
+static void input_barrier()
+{
+    uint8 x = '\0';
+    while (x == '\0') {
+        asm volatile("wfi");
+        uart_read(&UART2_DRIVER, &x);
+    }
+}
+
+static void debug_allocators(bool mmu_dump)
+{
+    input_barrier();
+
+    if (mmu_dump) {
+        kprint("\n\r=== MMU ===\n\r");
+        mmu_debug_dump(&mm_mmu_h, MMU_TBL_HI);
+    }
+
+    kprint("\n\r=== PAGE ALLOCATOR ===\n\r");
+    page_allocator_debug();
+    vmalloc_debug_free();
+    vmalloc_debug_reserved();
+}
 
 
 // Main function of the kernel, called by the bootloader (/boot/boot.S)
@@ -35,10 +66,44 @@ _Noreturn void kernel_entry()
     kprint("\n\rSTART\n\r");
 
 
-#define N 50'000'000
+#define N 100
 
-    for (size_t i = 0; i < N; i++)
-        kprintf("%d\n\r", i);
+    debug_allocators(true);
+
+
+    size_t i;
+    void* raw_kmap_ptrs[N];
+    void* raw_dynamic_ptrs[N];
+    void* cache_ptrs[N];
+    void* kmalloc_ptrs[N];
+
+    for (i = 0; i < N; i++)
+        raw_kmap_ptrs[i] = raw_kmalloc(1, "KMAP TEST", &RAW_KMALLOC_KMAP_CFG);
+
+    for (i = 0; i < N; i++)
+        raw_dynamic_ptrs[i] = raw_kmalloc(i+1, "DYNAMIC TEST", &RAW_KMALLOC_DYNAMIC_CFG);
+
+    for (i = 0; i < N; i++)
+        cache_ptrs[i] = cache_malloc(CACHE_32);
+
+    for (i = 0; i < N; i++)
+        kmalloc_ptrs[i] = kmalloc(i * 8);
+
+
+    debug_allocators(false);
+    kprint("\n\rALLOCATIONS ENDED\n\r");
+
+
+    for (i = 0; i < N; i++) {
+        raw_kfree(raw_kmap_ptrs[i]);
+        raw_kfree(raw_dynamic_ptrs[i]);
+        cache_free(CACHE_32, cache_ptrs[i]);
+        kfree(kmalloc_ptrs[i]);
+    }
+
+
+    debug_allocators(false);
+    kprint("\n\rFREES ENDED\n\r");
 
 
     loop asm volatile("wfi");

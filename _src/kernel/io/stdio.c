@@ -8,34 +8,16 @@
 
 #include "../devices/device_map.h"
 #include "lib/stdmacros.h"
-
+#include "stdputc.h"
 
 static term_handle stdout, stdwarn, stderr, stdpanic;
 
 static term_handle* const STDIO_OUTPUTS[4] = {
-    &stdout,
-    &stdwarn,
-    &stderr,
-    &stdpanic,
+    [IO_STDOUT] = &stdout,
+    [IO_STDWARN] = &stdwarn,
+    [IO_STDERR] = &stderr,
+    [IO_STDPANIC] = &stdpanic,
 };
-
-
-static term_out_result early_putc(const char c)
-{
-    return uart_putc_early(c);
-}
-
-
-static term_out_result std_putc(const char c)
-{
-    return uart_putc(&UART2_DRIVER, c);
-}
-
-
-static term_out_result panic_putc(const char c)
-{
-    return uart_putc_sync(&UART2_DRIVER, c);
-}
 
 
 void io_early_init()
@@ -43,7 +25,7 @@ void io_early_init()
     uart_early_init(UART2_BASE);
 
     for (size_t i = 0; i < ARRAY_LEN(STDIO_OUTPUTS); i++)
-        term_new(mm_as_kpa_ptr(STDIO_OUTPUTS[i]), early_putc);
+        term_new(mm_as_kpa_ptr(STDIO_OUTPUTS[i]), mm_as_kpa_ptr(STDIO_EARLY_PUTC));
 }
 
 
@@ -51,13 +33,8 @@ void io_init()
 {
     for (size_t i = 0; i < ARRAY_LEN(STDIO_OUTPUTS); i++) {
         term_delete(STDIO_OUTPUTS[i]);
+        term_new(STDIO_OUTPUTS[i], STDIO_PUTC[i]);
     }
-
-    // TODO: Change the std_putc for other outputs and add formatting like ansii colors etc.
-    term_new(&stdout, std_putc);
-    term_new(&stdwarn, std_putc);
-    term_new(&stderr, std_putc);
-    term_new(&stdpanic, panic_putc);
 }
 
 

@@ -19,7 +19,7 @@ void core_lock(corelock_t* l)
 {
     _core_lock(&l->l);
 
-    l->n++;
+    __atomic_add_fetch(&l->n, 1, __ATOMIC_SEQ_CST);
 }
 
 

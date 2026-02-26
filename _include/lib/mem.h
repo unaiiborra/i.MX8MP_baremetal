@@ -92,15 +92,28 @@ static inline v_uintptr va_zero_extend(v_uintptr va, size_t bits)
 #define memcpy(dst, src, size) _memcpy(dst, src, size)
 
 /// Standard memcpy, requieres simd instructions to be enabled
-extern void* _memcpy(void* dst, const void* src, uint64 size);
+extern void* _memcpy(void* dst, const void* src, size_t size);
 
 /// Panics: if the size is not divisible by 64
-void* memcpy64(void* dst, const void* src, uint64 size);
+void* memcpy64(void* dst, const void* src, size_t size);
 
 /// Panics: if the addreses are not aligned to 16 bytes or the size is not
 /// divisible by 64
-void* memcpy64_aligned(void* dst, const void* src, uint64 size);
+void* memcpy64_aligned(void* dst, const void* src, size_t size);
 
 #ifdef TEST
 void test_memcpy(size_t size_start);
 #endif
+
+
+/// zeroes from dst to dst + size
+extern void* _memzero(void* dst, size_t size);
+
+
+/// UNSAFE: requires the dst to be aligned to 16 and the size to be exactly a multiple of 64 or it
+/// will hang in DEBUG or cause ub in RELEASE
+extern void* _memzero64(void* dst16, size_t size64);
+
+
+#define memzero(dst, size) _memzero(dst, size)
+#define memzero64(dst, size) _memzero64(dst, size)

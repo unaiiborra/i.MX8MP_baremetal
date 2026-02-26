@@ -43,14 +43,16 @@ void reloc_cfg_end()
         mm_kpa_to_kva(mblcks[n - 1].addr + (mblcks[n - 1].pages * KPAGE_SIZE));
 
 
+#ifdef DEBUG
     page_allocator_debug();
     vmalloc_debug_free();
     vmalloc_debug_reserved();
-
+#endif
 
     // unmap the identity mapping
     mmu_unmap(&mm_mmu_h, 0x0, MEM_GiB * 5, NULL);
-    mmu_unmap(&mm_mmu_h, free_heap_start, MEM_TiB, NULL);
+    mmu_unmap(&mm_mmu_h, free_heap_start, MEM_TiB,
+              NULL); // TODO: unmap from the actually reserved memory
 
 
     extern _Noreturn void _return_to_kernel_entry(size_t physmap_offset);

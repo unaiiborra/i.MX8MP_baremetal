@@ -1,6 +1,7 @@
 #include "kernel/io/term.h"
 
 #include <lib/branch.h>
+#include <lib/lock/irqlock.h>
 #include <lib/lock/spinlock_irq.h>
 #include <lib/stdarg.h>
 #include <lib/stdmacros.h>
@@ -10,7 +11,6 @@
 #include "kernel/mm.h"
 #include "kernel/panic.h"
 #include "lib/lock/corelock.h"
-#include "lib/lock/irqlock.h"
 #include "lib/stdint.h"
 
 
@@ -65,27 +65,25 @@ static inline void putc(term_handle* h, char c)
 
 void term_printc(term_handle* h, const char c)
 {
-    irqlocked()
-    {
-        core_lock(&h->lock_);
+    irqlock_t f = irq_lock();
+    core_lock(&h->lock_);
 
-        putc(h, c);
+    putc(h, c);
 
-        core_unlock(&h->lock_);
-    }
+    core_unlock(&h->lock_);
+    irq_unlock(f);
 }
 
 void term_prints(term_handle* h, const char* s)
 {
-    irqlocked()
-    {
-        core_lock(&h->lock_);
+    irqlock_t f = irq_lock();
+    core_lock(&h->lock_);
 
-        while (*s)
-            putc(h, *s++);
+    while (*s)
+        putc(h, *s++);
 
-        core_unlock(&h->lock_);
-    }
+    core_unlock(&h->lock_);
+    irq_unlock(f);
 }
 
 
@@ -102,14 +100,13 @@ static void putfmt(char c, void* args)
 /// when kmalloc is implemented TODO:
 void term_printf(term_handle* h, const char* s, va_list ap)
 {
-    irqlocked()
-    {
-        core_lock(&h->lock_);
+    irqlock_t f = irq_lock();
+    core_lock(&h->lock_);
 
-        str_fmt_print(putfmt, h, s, ap);
+    str_fmt_print(putfmt, h, s, ap);
 
-        core_unlock(&h->lock_);
-    }
+    core_unlock(&h->lock_);
+    irq_unlock(f);
 }
 
 
@@ -124,25 +121,24 @@ void term_flush(term_handle* h)
     __attribute((unused)) char peek, pop;
 
 
-    irqlocked()
+    irqlock_t f = irq_lock();
+    core_lock(&h->lock_);
+
+    loop
     {
-        core_lock(&h->lock_);
+        if (!term_buffer_peek(&h->buf_, &peek))
+            break;
 
-        loop
-        {
-            if (!term_buffer_peek(&h->buf_, &peek))
-                break;
+        term_out_result res = h->out_(peek);
 
-            term_out_result res = h->out_(peek);
+        if (res == TERM_OUT_RES_NOT_TAKEN)
+            break;
 
-            if (res == TERM_OUT_RES_NOT_TAKEN)
-                break;
+        __attribute((unused)) bool pop_res = term_buffer_pop(&h->buf_, &pop);
 
-            __attribute((unused)) bool pop_res = term_buffer_pop(&h->buf_, &pop);
-
-            DEBUG_ASSERT(pop_res && peek == pop);
-        }
-
-        core_unlock(&h->lock_);
+        DEBUG_ASSERT(pop_res && peek == pop);
     }
+
+    core_unlock(&h->lock_);
+    irq_unlock(f);
 }

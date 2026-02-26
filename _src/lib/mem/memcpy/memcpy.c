@@ -4,17 +4,17 @@
 #include <lib/string.h>
 
 
-extern void* _memcpy64(void* dst, const void* src, uint64 size);
-extern void* _memcpy32(void* dst, const void* src, uint64 size);
-extern void* _memcpy16(void* dst, const void* src, uint64 size);
-extern void* _memcpy8(void* dst, const void* src, uint64 size);
-extern void* _memcpy4(void* dst, const void* src, uint64 size);
-extern void* _memcpy1(void* dst, const void* src, uint64 size);
+extern void* _memcpy64(void* dst, const void* src, size_t size);
+extern void* _memcpy32(void* dst, const void* src, size_t size);
+extern void* _memcpy16(void* dst, const void* src, size_t size);
+extern void* _memcpy8(void* dst, const void* src, size_t size);
+extern void* _memcpy4(void* dst, const void* src, size_t size);
+extern void* _memcpy1(void* dst, const void* src, size_t size);
 
 // byte per byte
-// extern void *_memcpy(void *dst, void *src, uint64 size);
+// extern void *_memcpy(void *dst, void *src, size_t size);
 
-void* memcpy64_aligned(void* dst, const void* src, uint64 size)
+void* memcpy64_aligned(void* dst, const void* src, size_t size)
 {
     if (size == 0)
         return dst;
@@ -31,7 +31,7 @@ void* memcpy64_aligned(void* dst, const void* src, uint64 size)
     return _memcpy64(dst, src, size);
 }
 
-void* memcpy64(void* dst, const void* src, uint64 size)
+void* memcpy64(void* dst, const void* src, size_t size)
 {
     if (size == 0)
         return dst;

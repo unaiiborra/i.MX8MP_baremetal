@@ -28,10 +28,7 @@ static p_uintptr mmu_allocator_fn(size_t bytes, size_t align)
 // allocator freer for the early identity mapping tables
 static void mmu_free_fn(p_uintptr addr)
 {
-    (void)addr;
-
-    PANIC("TODO: implement");
-    // TODO: use the raw_allocator free
+    raw_kfree((void*)addr);
 }
 
 
@@ -44,18 +41,9 @@ void mm_early_init()
 
     // init identity mapping
     early_identity_mapping();
-#ifdef DEBUG
-    kprint("Identity mapping mmu: \n\r");
-    mmu_debug_dump(&mm_mmu_h, MMU_TBL_LO);
-    mmu_debug_dump(&mm_mmu_h, MMU_TBL_HI);
-#endif
 
     // page allocator
     page_allocator_init();
-#ifdef DEBUG
-    kprint("\n\rPage allocator test: \n\r");
-    page_allocator_debug();
-#endif
 
     // virtual allocator
     vmalloc_init();

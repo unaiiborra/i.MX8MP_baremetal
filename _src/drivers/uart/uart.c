@@ -446,7 +446,7 @@ void uart_init_stage0(const driver_handle* h)
 
     UartUfcrValue ufcr = {0};     // 0000 1010 0000 0001
     UART_UFCR_RXTL_set(&ufcr, 1); // RX fifo threshold interrupt 1
-    UART_UFCR_TXTL_set(&ufcr, 4); // TX fifo threshold interrupt 4
+    UART_UFCR_TXTL_set(&ufcr, 4); // TX fifo threshold interrupt 1
     UART_UFCR_DCEDTE_set(&ufcr, false);
     UART_UFCR_RFDIV_set(&ufcr, UART_UFCR_RFDIV_DIV_BY_2);
     UART_UFCR_write(base, ufcr);

@@ -181,11 +181,14 @@ void* raw_kmalloc(size_t pages, const char* tag, const raw_kmalloc_cfg* cfg)
     }
 
     if (cfg->init_zeroed) {
-        uint64* ptr = (uint64*)va;
+        memzero64(va, pages * KPAGE_SIZE);
 
-        // TODO: memzero
-        for (size_t i = 0; i < pages * (KPAGE_SIZE / sizeof(uint64)); i++)
-            ptr[i] = 0;
+#ifdef DEBUG
+        uint64* ptr = (uint64*)va;
+        DEBUG_ASSERT((uintptr)va % KPAGE_SIZE == 0);
+        for (size_t i = 0; i < (pages * KPAGE_SIZE) / sizeof(uint64); i++)
+            DEBUG_ASSERT(ptr[i] == 0);
+#endif
     }
 
     return va;
