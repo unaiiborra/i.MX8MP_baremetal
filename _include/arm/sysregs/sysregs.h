@@ -22,4 +22,3 @@ extern uint64 _ARM_SPSR_EL1();
 
 extern uint64 _ARM_SCTLR_EL1();
 extern uint64 _ARM_SCTLR_EL2();
-

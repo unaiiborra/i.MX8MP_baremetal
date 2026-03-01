@@ -2,8 +2,6 @@
 
 #include <lib/stdint.h>
 
-#include "arm/mmu/mmu.h"
-
 
 extern uint64 _mmu_get_MAIR_EL1(void);
 extern void _mmu_set_MAIR_EL1(uint64 v);
@@ -22,6 +20,3 @@ extern uint64 _mmu_get_TCR_EL1(void);
 extern void _mmu_set_TCR_EL1(uint64 v);
 
 extern uint64 _mmu_get_ID_AA64MMFR0_EL1(void);
-
-
-void mmu_apply_cfg(mmu_cfg cfg);

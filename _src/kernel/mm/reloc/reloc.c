@@ -1,6 +1,6 @@
 #include "reloc.h"
 
-#include <arm/mmu/mmu.h>
+#include <arm/mmu.h>
 #include <kernel/mm.h>
 #include <kernel/panic.h>
 #include <lib/mem.h>
@@ -8,53 +8,74 @@
 #include <lib/stdmacros.h>
 #include <lib/unit/mem.h>
 
+#include "../init/identity_mapping.h"
 #include "../init/mem_regions/early_kalloc.h"
-#include "../mm_info.h"
+#include "../mm_mmu/mm_mmu.h"
 #include "../phys/page_allocator.h"
 #include "../virt/vmalloc.h"
 
-
-extern _Noreturn void _jmp_to_with_offset(void* to, size_t offset);
+extern _Noreturn void _jmp_to_with_offset(void *to, size_t offset);
 extern _Noreturn void _reloc_cfg_end(void);
 
 
 void mm_reloc_kernel()
 {
-    ASSERT(mmu_is_active());
+	ASSERT(mmu_is_active());
 
 
-    // jumps to the asm fn _reloc_cfg_end (relocated with KERNEL BASE). _reloc_cfg_end returns to
-    // reloc_cfg_end
-    _jmp_to_with_offset(_reloc_cfg_end, KERNEL_BASE);
+	// jumps to the asm fn _reloc_cfg_end (relocated with KERNEL BASE).
+	// _reloc_cfg_end returns to reloc_cfg_end
+	_jmp_to_with_offset(_reloc_cfg_end, KERNEL_BASE);
 }
 
 
 void reloc_cfg_end()
 {
-    // reloc the allocated tables pointers offsets
-    mmu_reloc(&mm_mmu_h, KERNEL_BASE);
+	// get first free heap va
+	early_memreg *mblcks;
+	size_t n;
 
-
-    // get first free heap va
-    early_memreg* mblcks;
-    size_t n;
-    early_kalloc_get_memregs(&mblcks, &n);
-    v_uintptr free_heap_start =
-        mm_kpa_to_kva(mblcks[n - 1].addr + (mblcks[n - 1].pages * KPAGE_SIZE));
+	early_kalloc_get_memregs(&mblcks, &n);
+	v_uintptr free_heap_start =
+		mm_kpa_to_kva(mblcks[n - 1].addr + (mblcks[n - 1].pages * KPAGE_SIZE));
 
 
 #ifdef DEBUG
-    page_allocator_debug();
-    vmalloc_debug_free();
-    vmalloc_debug_reserved();
+	page_allocator_debug();
+	vmalloc_debug_free();
+	vmalloc_debug_reserved();
 #endif
 
-    // unmap the identity mapping
-    mmu_unmap(&mm_mmu_h, 0x0, MEM_GiB * 5, NULL);
-    mmu_unmap(&mm_mmu_h, free_heap_start, MEM_TiB,
-              NULL); // TODO: unmap from the actually reserved memory
+	mmu_core_handle *ch0 = mm_mmu_core_handler_get_self();
+
+	mmu_mapping *LO_MAPPING = mmu_core_get_lo_mapping(ch0);
+	mmu_mapping *HI_MAPPING = mmu_core_get_hi_mapping(ch0);
+
+	// relocate the table pointers to the va
+	UNSAFE_mmu_mapping_set_tbl_address(
+		LO_MAPPING,
+		mm_as_kva_ptr(LO_MAPPING->tbl_));
+
+	UNSAFE_mmu_mapping_set_tbl_address(
+		HI_MAPPING,
+		mm_as_kva_ptr(HI_MAPPING->tbl_));
+
+	mmu_core_set_mapping(ch0, mm_as_kva_ptr(LO_MAPPING));
+	mmu_core_set_mapping(ch0, mm_as_kva_ptr(HI_MAPPING));
+
+	// unmap the identity mapping
+	bool result = mmu_core_set_mapping(ch0, &MM_MMU_UNMAPPED_LO);
+	ASSERT(result);
+
+	mmu_delete_mapping(&early_lo_mapping);
+
+	mmu_unmap(
+		&kernel_mmu_mapping,
+		free_heap_start,
+		MEM_TiB,
+		NULL); // TODO: unmap from the actually reserved memory
 
 
-    extern _Noreturn void _return_to_kernel_entry(size_t physmap_offset);
-    _return_to_kernel_entry(KERNEL_BASE);
+	extern _Noreturn void _return_to_kernel_entry(size_t physmap_offset);
+	_return_to_kernel_entry(KERNEL_BASE);
 }

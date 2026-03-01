@@ -6,6 +6,7 @@ compile_commands.json
 
 /target
 /thesis
+/tmp
 
 # Added by cargo
 #

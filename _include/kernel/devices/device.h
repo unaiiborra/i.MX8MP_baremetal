@@ -6,12 +6,12 @@
 
 typedef struct {
 	uintptr base;
-	void *state;
+	void *	state;
 } driver_handle;
 
 typedef struct {
-	uint64 id;
-	const char *name;
-	uint64 irqid;
-	const driver_handle *drv;
+	uint64			id;
+	const char *		name;
+	uint64			irqid;
+	const driver_handle *	drv;
 } kernel_device;

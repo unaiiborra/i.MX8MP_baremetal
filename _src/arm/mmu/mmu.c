@@ -1,660 +1,292 @@
-#include "arm/mmu/mmu.h"
+#define __MMU_INTERNAL
 
-#include <lib/lock/spinlock.h>
-#include <lib/math.h>
+#include <arm/mmu.h>
 #include <lib/mem.h>
+#include <lib/stdbool.h>
 #include <lib/stdint.h>
-#include <lib/stdmacros.h>
 
-#include "kernel/panic.h"
-#include "lib/align.h"
-#include "lib/lock/spinlock_irq.h"
-#include "lib/stdbool.h"
-#include "mmu_dc.h"
-#include "mmu_helpers.h"
-#include "mmu_types.h"
 #include "regs/mmu_sysregs.h"
+#include "mmu_tbl_ctrl.h"
+#include "mmu_types.h"
 
 
-#define MMU_APPLY_CHANGES()       \
-    asm volatile("dsb ishst\n"    \
-                 "tlbi vmalle1\n" \
-                 "dsb ish\n"      \
-                 "isb\n");
-
-
-static void mmu_apply(mmu_handle* h);
-
-void mmu_init(mmu_handle* h, mmu_cfg cfg, mmu_alloc alloc, mmu_free free, isize_t physmap_offset)
+static inline bool is_in_range(const mmu_mapping *m, v_uintptr va, size_t size)
 {
-    mmu_tbl tbl0 = alloc_tbl(alloc, cfg.lo_gran, true, NULL);
-    mmu_tbl tbl1 = alloc_tbl(alloc, cfg.hi_gran, true, NULL);
+	if (!m || size == 0)
+		return false;
 
-    *h = (mmu_handle) {
+	const size_t bits = m->va_addr_bits_;
+	const mmu_tbl_rng rng = m->rng_;
 
-        .alloc_ = alloc,
-        .free_ = free,
-        .tbl0_ = (void*)tbl0.dcs,
-        .tbl1_ = (void*)tbl1.dcs,
-        .physmap_offset = physmap_offset,
-        .cfg_ = cfg,
-        .slock_ = {0},
-    };
+	const bool is_hi = (va >> 63) != 0;
 
-    spinlock_init(&h->slock_);
+	if ((rng == MMU_LO && is_hi) || (rng == MMU_HI && !is_hi))
+		return false;
 
-    mmu_apply(h);
+	v_uintptr end = va + size - 1;
+	if (end < va)
+		return false;
+
+
+	if (rng == MMU_LO) {
+		const v_uintptr limit =
+			(bits == 64) ? ~(v_uintptr)0 : ((v_uintptr)1 << bits);
+
+		return end < limit;
+	} else {
+		const v_uintptr base = (bits == 64) ? 0 : (~((v_uintptr)1 << bits) + 1);
+		return va >= base;
+	}
 }
 
 
-isize_t mmu_get_physmap_offset(mmu_handle* h)
+static inline void get_target_lvl(
+	mmu_tbl_level * target_lvl,
+	size_t *	cover,
+	size_t		size,
+	mmu_granularity g,
+	v_uintptr	va,
+	p_uintptr	pa)
 {
-    return h->physmap_offset;
-}
+	mmu_tbl_level l;
+	size_t c;
 
+	for (l = MMU_TBL_LV1; l <= max_level(g); l++) {
+		c = dc_cover_bytes(g, l);
 
-void mmu_activate()
-{
-    uint64 sctlr = _mmu_get_SCTLR_EL1();
-    sctlr |= 0b1ULL;
-    _mmu_set_SCTLR_EL1(sctlr);
+		if (size >= dc_cover_bytes(g, l) && va % c == 0 && pa % c == 0)
+			break;
+	}
 
-    MMU_APPLY_CHANGES();
-}
-
-
-void mmu_deactivate()
-{
-    uint64 sctlr = _mmu_get_SCTLR_EL1();
-    sctlr &= ~(0b1ULL);
-    _mmu_set_SCTLR_EL1(sctlr);
-
-    MMU_APPLY_CHANGES();
+	if (target_lvl)
+		*target_lvl = l;
+	if (cover)
+		*cover = c;
 }
 
 
 bool mmu_is_active()
 {
-    return (bool)(_mmu_get_SCTLR_EL1() & 0b1);
-}
-
-size_t mmu_hi_va_bits(mmu_handle* h)
-{
-    return h->cfg_.hi_va_addr_bits;
-}
-
-size_t mmu_lo_va_bits(mmu_handle* h)
-{
-    return h->cfg_.lo_va_addr_bits;
+	return _mmu_get_SCTLR_EL1() & 1ULL;
 }
 
 
-mmu_cfg mmu_get_cfg(mmu_handle* h)
+mmu_map_result mmu_map(
+	const mmu_mapping *	m,
+	v_uintptr		va,
+	p_uintptr		pa,
+	size_t			size,
+	mmu_pg_cfg		cfg,
+	mmu_op_info *		info)
 {
-    return h->cfg_;
-}
+	mmu_granularity g = m->g_;
+	mmu_tbl_level target_lvl;
+	size_t cover;
 
-void mmu_reconfig_allocators(mmu_handle* h, mmu_alloc alloc, mmu_free free)
-{
-    h->alloc_ = alloc == NULL ? h->alloc_ : alloc;
-    h->free_ = free == NULL ? h->free_ : free;
-}
+	if (!m)
+		return MMU_MAP_NULL_MAPPING;
 
+	if (size == 0)
+		return MMU_MAP_OK;
 
-mmu_pg_cfg mmu_pg_cfg_new(uint8 attr_index, mmu_access_permission ap, uint8 shareability,
-                          bool non_secure, bool access_flag, bool pxn, bool uxn, uint8 sw)
-{
-    return (mmu_pg_cfg) {
-        .attr_index = attr_index,
-        .ap = ap,
-        .shareability = shareability,
-        .non_secure = non_secure,
-        .access_flag = access_flag,
-        .pxn = pxn,
-        .uxn = uxn,
-        .sw = sw,
-    };
-}
-
-
-void mmu_cfg_new(mmu_cfg* out, bool d_cache, bool i_cache, bool align_trap, bool hi_enable,
-                 bool lo_enable, uint8 hi_va_addr_bits, uint8 lo_va_addr_bits,
-                 mmu_granularity hi_gran, mmu_granularity lo_gran)
-{
-    if (!out) {
-        return;
-    }
-
-    out->d_cache = d_cache;
-    out->i_cache = i_cache;
-    out->align_trap = align_trap;
-
-    out->hi_enable = hi_enable;
-    out->lo_enable = lo_enable;
-
-    out->hi_va_addr_bits = hi_va_addr_bits;
-    out->lo_va_addr_bits = lo_va_addr_bits;
-
-    out->hi_gran = hi_gran;
-    out->lo_gran = lo_gran;
-}
-
-
-static void UNLOCKED_free_subtree(mmu_handle* h, mmu_tbl tbl, mmu_granularity g, mmu_tbl_level l,
-                                  mmu_op_info* info)
-{
-    for (size_t i = 0; i < tbl_entries(g); i++)
-        if (dc_get_valid(tbl.dcs[i]) && dc_get_type(tbl.dcs[i], g, l) == MMU_DESCRIPTOR_TABLE)
-            UNLOCKED_free_subtree(h, tbl_from_td(h, tbl.dcs[i], g, l + 1), g, l + 1, info);
-
-
-    h->free_(tbl.dcs);
-
-    if (info)
-        info->freed_tbls++;
-}
-
-
-static inline void get_target_lvl(mmu_tbl_level* target_lvl, size_t* cover, size_t size,
-                                  mmu_granularity g, v_uintptr virt, p_uintptr phys)
-{
-    mmu_tbl_level l;
-    size_t c;
-    for (l = MMU_TBL_LV1; l <= max_level(g); l++) {
-        c = dc_cover_bytes(g, l);
-
-        if (size >= dc_cover_bytes(g, l) && virt % c == 0 && phys % c == 0)
-            break;
-    }
-
-    if (target_lvl)
-        *target_lvl = l;
-    if (cover)
-        *cover = c;
-}
-
-
-static bool UNLOCKED_map_(mmu_handle* h, v_uintptr va, p_uintptr pa, size_t size, mmu_pg_cfg cfg,
-                          mmu_op_info* info)
-{
-#ifdef DEBUG
-    if (info)
-        info->iters += 1;
-
-    p_uintptr expected_phys_end = pa + size;
-    v_uintptr expected_virt_end = va + size;
-#endif
-
-    if (size == 0)
-        return true;
-
-
-    mmu_alloc alloc = h->alloc_;
-
-    mmu_tbl_level target_lvl;
-    size_t cover;
-
-
-    while (size > 0) {
-        size_t i;
-        mmu_granularity g;
-        mmu_tbl tbl = get_first_tbl(h, va, &g);
-
-        ASSERT(size % g == 0 && va % g == 0 && pa % g == 0);
-
-        get_target_lvl(&target_lvl, &cover, size, g, va, pa);
-
-        DEBUG_ASSERT(va % cover == 0);
-        DEBUG_ASSERT(pa % cover == 0);
-
-
-        // the main loop of the fn, finds the actual table of the target level
-        for (mmu_tbl_level l = MMU_TBL_LV0; l < target_lvl; l++) {
-            i = table_index(va, g, l);
-
-            mmu_hw_dc dc = mmu_tbl_get_dc(tbl, i, g);
-
-            // not valid
-            if (!dc_get_valid(dc)) {
-                // --- invalid descriptor ---
-                // allocate a new table
-                mmu_tbl next = alloc_tbl(alloc, g, true, info);
-
-                // link the new allocated table in the current table level
-                tbl.dcs[i] = td_build(next, g, h->physmap_offset);
-                tbl = next;
-
-                continue;
-            }
-
-            switch (dc_get_type(dc, g, l)) {
-                case MMU_DESCRIPTOR_BLOCK:
-                    tbl = split_block(h, tbl, g, i, l, info);
-                    continue;
-                case MMU_DESCRIPTOR_TABLE:
-                    tbl = tbl_from_td(h, dc, g, l);
-                    continue;
-                default:
-                    PANIC("mmu_map: err"); // should not be a block (l < target_lvl)
-            }
-        }
-
-        // build the block descriptor
-        i = table_index(va, g, target_lvl);
-
-        mmu_hw_dc old = mmu_tbl_get_dc(tbl, i, g);
-
-        tbl.dcs[i] = bd_build(cfg, pa, g, target_lvl);
-
-        // if it was a table, free it (and all the subtables)
-        if (dc_get_valid(old) && dc_get_type(old, g, target_lvl) == MMU_DESCRIPTOR_TABLE)
-            UNLOCKED_free_subtree(h, tbl_from_td(h, old, g, target_lvl), g, target_lvl, info);
-
-
-        size -= cover;
-        pa += cover;
-        va += cover;
-    }
+	if (!is_in_range(m, va, size))
+		return MMU_MAP_MAP_NOT_IN_RANGE;
 
 #ifdef DEBUG
-    DEBUG_ASSERT(size == 0 && pa == expected_phys_end && va == expected_virt_end);
+	p_uintptr expected_phys_end = pa + size;
+	v_uintptr expected_virt_end = va + size;
 #endif
 
-    return true;
-}
+	const mmu_tbl TBL0 = mmu_mapping_get_tbl(m);
 
+	while (size > 0) {
+		size_t i;
+		mmu_tbl tbl = TBL0;
 
-bool mmu_map(mmu_handle* h, v_uintptr virt, p_uintptr phys, size_t size, mmu_pg_cfg cfg,
-             mmu_op_info* info)
-{
-    bool result;
+		ASSERT(size % g == 0 && va % g == 0 && pa % g == 0);
 
-    if (info)
-        *info = (mmu_op_info) {
-#ifdef DEBUG
-            .iters = 0,
-#endif
-            .alocated_tbls = 0,
-            .freed_tbls = 0,
-        };
+		get_target_lvl(&target_lvl, &cover, size, g, va, pa);
 
-    spin_lock(&h->slock_);
+		DEBUG_ASSERT(va % cover == 0);
+		DEBUG_ASSERT(pa % cover == 0);
 
+		// the main loop of the fn, finds the actual table of the target level
+		for (mmu_tbl_level l = MMU_TBL_LV0; l < target_lvl; l++) {
+			if (info)
+				info->iters += 1;
 
-    result = UNLOCKED_map_(h, virt, phys, size, cfg, info);
-    MMU_APPLY_CHANGES()
+			i = table_index(va, g, l);
 
+			const mmu_hw_dc descriptor = mmu_tbl_get_dc(tbl, i, g);
 
-    spin_unlock(&h->slock_);
+			// not valid
+			if (!dc_get_valid(descriptor)) {
+				// --- invalid descriptor ---
+				// allocate a new table
+				mmu_tbl next = alloc_tbl(m, true, info);
 
-    return result;
-}
+				// link the new allocated table in the current table level
+				tbl.dcs[i] = td_build(m, next);
+				tbl = next;
 
+				continue;
+			}
 
-bool UNLOCKED_unmap_(mmu_handle* h, v_uintptr va, size_t size, mmu_op_info* info)
-{
-#ifdef DEBUG
-    if (info)
-        info->iters += 1;
+			switch (dc_get_type(descriptor, g, l)) {
+			case MMU_DESCRIPTOR_BLOCK:
+				tbl = split_block(m, tbl, i, l, info);
+				continue;
+			case MMU_DESCRIPTOR_TABLE:
+				tbl = tbl_from_td(m, descriptor, l);
+				continue;
+			default:
+				PANIC("mmu_map: err");  // should not be a block (l <
+				                        // target_lvl)
+			}
+		}
 
-    v_uintptr expected_virt_end = va + size;
-#endif
+		// build the block descriptor
+		i = table_index(va, g, target_lvl);
 
-    if (size == 0)
-        return true;
+		mmu_hw_dc old = mmu_tbl_get_dc(tbl, i, g);
 
-    size_t cover;
-    size_t i;
-    mmu_granularity g;
+		tbl.dcs[i] = bd_build(cfg, pa, g, target_lvl);
 
-    while (size > 0) {
-        mmu_tbl tbl = get_first_tbl(h, va, &g);
+		// if it was a table, free it (and all the subtables)
+		if (dc_get_valid(old) &&
+		    dc_get_type(old, g, target_lvl) == MMU_DESCRIPTOR_TABLE)
+			free_tbl(m, tbl_from_td(m, old, target_lvl), target_lvl, info);
 
-        mmu_tbl_level l, target_lvl;
-
-
-        if (size % g != 0 || va % g != 0)
-            return false;
-
-        get_target_lvl(&target_lvl, &cover, size, g, va, 0);
-
-
-        DEBUG_ASSERT(size % g == 0 || va % g == 0);
-        DEBUG_ASSERT(va % cover == 0);
-
-        // the main loop of the fn, finds the actual table of the target level
-
-        bool already_unmapped = false;
-
-        for (l = MMU_TBL_LV0; l < target_lvl; l++) {
-            i = table_index(va, g, l);
-
-            mmu_hw_dc dc = mmu_tbl_get_dc(tbl, i, g);
-
-            // not valid
-            if (!dc_get_valid(dc)) {
-                already_unmapped = true;
-                break;
-            }
-
-            switch (dc_get_type(dc, g, l)) {
-                case MMU_DESCRIPTOR_BLOCK:
-                    tbl = split_block(h, tbl, g, i, l, info);
-                    continue;
-                case MMU_DESCRIPTOR_TABLE:
-                    tbl = tbl_from_td(h, dc, g, l);
-                    continue;
-                default:
-                    break;
-            }
-
-            PANIC("mmu_map: err");
-        }
-
-        if (already_unmapped) {
-            cover = min(size, dc_cover_bytes(g, l));
-            size -= cover;
-            va += cover;
-            continue;
-        }
-
-        // build the null block descriptor
-        i = table_index(va, g, target_lvl);
-        mmu_hw_dc old = mmu_tbl_get_dc(tbl, i, g);
-
-        tbl.dcs[i] = NULL_PD;
-
-        // if it was a table, free it (and all the subtables)
-        if (dc_get_type(old, g, target_lvl) == MMU_DESCRIPTOR_TABLE && dc_get_valid(old))
-            UNLOCKED_free_subtree(h, tbl_from_td(h, old, g, target_lvl), g, target_lvl, info);
-
-        size -= cover;
-        va += cover;
-    }
-
-
-    // TODO: Collapse null tables
-    /*
-        tbl = tbl0;
-        // another final look to see if a table is fully null and collapse it
-        for (l = MMU_TBL_LV0; l <= max_level(g); l++) {
-            i = table_index(virt, g, l);
-
-            mmu_hw_dc dc = tbl.dcs[i];
-
-            if (!dc_get_valid(dc))
-                break;
-
-            if (dc_get_type(dc) == MMU_PD_TABLE) {
-                mmu_tbl subtbl = tbl_from_td(dc, g);
-
-                if (tbl_is_null(subtbl, g)) {
-                    tbl.dcs[i] = NULL_PD;
-
-                    UNLOCKED_free_subtree(h, tbl_from_td(dc, g), info);
-                    break;
-                }
-
-                tbl = subtbl;
-            }
-        }
-    */
+		size -= cover;
+		pa += cover;
+		va += cover;
+	}
 
 #ifdef DEBUG
-    DEBUG_ASSERT(size == 0 && va == expected_virt_end);
+	DEBUG_ASSERT(
+		size == 0 && pa == expected_phys_end && va == expected_virt_end);
 #endif
 
-    return true;
+	MMU_APPLY_CHANGES();
+
+	return MMU_MAP_OK;
 }
 
 
-bool mmu_unmap(mmu_handle* h, v_uintptr virt, size_t size, mmu_op_info* info)
+mmu_unmap_result
+mmu_unmap(const mmu_mapping *m, v_uintptr va, size_t size, mmu_op_info *info)
 {
-    bool result;
+	size_t cover;
+	size_t i;
+	mmu_granularity g = m->g_;
+	mmu_tbl_level l, target_lvl;
 
-    if (info)
-        *info = (mmu_op_info) {
+	if (size == 0)
+		return MMU_UNMAP_OK;
+
 #ifdef DEBUG
-            .iters = 0,
+	v_uintptr expected_virt_end = va + size;
 #endif
-            .alocated_tbls = 0,
-            .freed_tbls = 0,
-        };
 
-    spin_lock(&h->slock_);
-    result = UNLOCKED_unmap_(h, virt, size, info);
+	const mmu_tbl TBL0 = mmu_mapping_get_tbl(m);
 
-    MMU_APPLY_CHANGES();
-    spin_unlock(&h->slock_);
+	while (size > 0) {
+		mmu_tbl tbl = TBL0;
 
-    return result;
-}
+		if (size % g != 0 || va % g != 0)
+			return MMU_UNMAP_ERR;
+
+		get_target_lvl(&target_lvl, &cover, size, g, va, 0);
 
 
-bool mmu_peek(mmu_handle* h, v_uintptr va, size_t size, mmu_peek_cb cb, void* args)
-{
-    if (!cb)
-        return false;
-
-    if (size == 0)
-        return true;
-
-    size_t i;
-    mmu_granularity g;
-    mmu_tbl_level l;
-
-    while (size > 0) {
-        mmu_tbl tbl = get_first_tbl(h, va, &g);
-
-        for (l = MMU_TBL_LV0; l <= max_level(g); l++) {
-            i = table_index(va, g, l);
-
-            mmu_hw_dc dc = mmu_tbl_get_dc(tbl, i, g);
-
-            // not valid
-            if (!dc_get_valid(dc)) {
-                if (!cb(
-                        (mmu_peek_data) {
-                            .va = align_down(va, dc_cover_bytes(g, l)),
-                            .pa = 0x0,
-                            .bytes = dc_cover_bytes(g, l),
-                            .cfg = cfg_from_dc(dc),
-                            .valid = false,
-                        },
-                        args))
-                    return true;
-
-                break;
-            }
-
-            switch (dc_get_type(dc, g, l)) {
-                case MMU_DESCRIPTOR_TABLE:
-                    tbl = tbl_from_td(h, dc, g, l);
-                    continue;
-
-                case MMU_DESCRIPTOR_BLOCK:
-                    if (!cb(
-                            (mmu_peek_data) {
-                                .va = align_down(va, dc_cover_bytes(g, l)),
-                                .pa = dc_get_output_address(dc, g),
-                                .bytes = dc_cover_bytes(g, l),
-                                .cfg = cfg_from_dc(dc),
-                                .valid = true,
-                            },
-                            args))
-                        return true;
-
-                    break;
-
-                case MMU_DESCRIPTOR_PAGE:
-                    DEBUG_ASSERT(l == max_level(g));
-                    if (!cb(
-                            (mmu_peek_data) {
-                                .va = align_down(va, dc_cover_bytes(g, l)),
-                                .pa = dc_get_output_address(dc, g),
-                                .bytes = dc_cover_bytes(g, l),
-                                .cfg = cfg_from_dc(dc),
-                                .valid = true,
-                            },
-                            args))
-                        return true;
-
-                    break;
-
-                default:
-                    PANIC("mmu_peek: err");
-            }
-
-            break;
-        }
-
-        size_t cover = dc_cover_bytes(g, l);
-        v_uintptr block_start = align_down(va, cover);
-        v_uintptr block_end = block_start + cover;
-
-        size_t sz = block_end - va;
-        if (sz > size)
-            sz = size;
+		DEBUG_ASSERT(size % g == 0 || va % g == 0);
+		DEBUG_ASSERT(va % cover == 0);
 
 
-        size -= sz;
-        va += sz;
-    }
+		// the main loop of the fn, finds the actual table of the target level
+		bool already_unmapped = false;
 
-    return true;
-}
+		for (l = MMU_TBL_LV0; l < target_lvl; l++) {
+			if (info)
+				info->iters += 1;
 
+			i = table_index(va, g, l);
 
-bool mmu_region_is_mapped(mmu_handle* h, v_uintptr va, size_t size)
-{
-    size_t i;
-    mmu_granularity g;
-    mmu_tbl_level l;
+			mmu_hw_dc dc = mmu_tbl_get_dc(tbl, i, g);
 
-    while (size > 0) {
-        mmu_tbl tbl = get_first_tbl(h, va, &g);
+			// not valid
+			if (!dc_get_valid(dc)) {
+				already_unmapped = true;
+				break;
+			}
 
-        for (l = MMU_TBL_LV0; l <= max_level(g); l++) {
-            i = table_index(va, g, l);
+			switch (dc_get_type(dc, g, l)) {
+			case MMU_DESCRIPTOR_BLOCK:
+				tbl = split_block(m, tbl, i, l, info);
+				continue;
+			case MMU_DESCRIPTOR_TABLE:
+				tbl = tbl_from_td(m, dc, l);
+				continue;
+			default:
+				break;
+			}
 
-            mmu_hw_dc dc = mmu_tbl_get_dc(tbl, i, g);
+			PANIC("mmu_map: err");
+		}
 
-            // not valid
-            if (!dc_get_valid(dc))
-                return false;
+		if (already_unmapped) {
+			cover = min(size, dc_cover_bytes(g, l));
+			size -= cover;
+			va += cover;
+			continue;
+		}
 
-            switch (dc_get_type(dc, g, l)) {
-                case MMU_DESCRIPTOR_TABLE:
-                    tbl = tbl_from_td(h, dc, g, l);
-                    continue;
+		// build the null block descriptor
+		i = table_index(va, g, target_lvl);
+		mmu_hw_dc old = mmu_tbl_get_dc(tbl, i, g);
 
-                case MMU_DESCRIPTOR_BLOCK:
-                    break;
+		tbl.dcs[i] = NULL_PD;
 
-                case MMU_DESCRIPTOR_PAGE:
-                    DEBUG_ASSERT(l == max_level(g));
-                    break;
+		// if it was a table, free it (and all the subtables)
+		if (dc_get_type(old, g, target_lvl) == MMU_DESCRIPTOR_TABLE &&
+		    dc_get_valid(old))
+			free_tbl(m, tbl_from_td(m, old, target_lvl), target_lvl, info);
 
-                default:
-                    PANIC("mmu_region_is_mapped: err");
-            }
-
-            break;
-        }
-
-        size_t cover = dc_cover_bytes(g, l);
-        v_uintptr block_start = align_down(va, cover);
-        v_uintptr block_end = block_start + cover;
-
-        size_t sz = block_end - va;
-        if (sz > size)
-            sz = size;
-
-        size -= sz;
-        va += sz;
-    }
-
-    return true;
-}
+		size -= cover;
+		va += cover;
+	}
 
 
-void mmu_reloc(mmu_handle* h, isize_t physmap_offset)
-{
-    irqlock_t f = spin_lock_irqsave(&h->slock_);
+	// TODO: Collapse null tables
+	/*
+	 *  tbl = tbl0;
+	 *  // another final look to see if a table is fully null and collapse it
+	 *  for (l = MMU_TBL_LV0; l <= max_level(g); l++) {
+	 *      i = table_index(virt, g, l);
+	 *
+	 *      mmu_hw_dc dc = tbl.dcs[i];
+	 *
+	 *      if (!dc_get_valid(dc))
+	 *          break;
+	 *
+	 *      if (dc_get_type(dc) == MMU_PD_TABLE) {
+	 *          mmu_tbl subtbl = tbl_from_td(dc, g);
+	 *
+	 *          if (tbl_is_null(subtbl, g)) {
+	 *              tbl.dcs[i] = NULL_PD;
+	 *
+	 *              UNLOCKED_free_subtree(h, tbl_from_td(dc, g), info);
+	 *              break;
+	 *          }
+	 *
+	 *          tbl = subtbl;
+	 *      }
+	 *  }
+	 */
 
-    h->physmap_offset = physmap_offset;
+#ifdef DEBUG
+	DEBUG_ASSERT(size == 0 && va == expected_virt_end);
+#endif
 
-    asm volatile("isb");
-
-    spin_unlock_irqrestore(&h->slock_, f);
-}
-
-
-static inline bool mmu_supports_4kb_(uint64 id_aa64mmfr0)
-{
-    return (((id_aa64mmfr0 >> 28) & 0xF) == 0);
-}
-
-//  DDI0500J_cortex_a53_trm.dcf p.104
-static inline bool mmu_supports_64kb_(uint64 id_aa64mmfr0)
-{
-    return (((id_aa64mmfr0 >> 24) & 0xF) == 0);
-}
-
-//  DDI0500J_cortex_a53_trm.dcf p.104
-static inline bool mmu_supports_16kb_(uint64 id_aa64mmfr0)
-{
-    return (((id_aa64mmfr0 >> 20) & 0xF) == 0);
-}
-
-static void mmu_apply(mmu_handle* h)
-{
-    mmu_granularity g[2] = {h->cfg_.lo_gran, h->cfg_.hi_gran};
-    mmu_tbl tbl0 = ttbr0_from_handle(h);
-    mmu_tbl tbl1 = ttbr1_from_handle(h);
-
-
-    ASSERT(tbl0.dcs && tbl1.dcs);
-
-
-    irq_spinlocked(&h->slock_)
-    {
-        uint64 id_aa64mmfr0 = _mmu_get_ID_AA64MMFR0_EL1();
-
-        for (size_t i = 0; i < 2; i++)
-            switch (g[i]) {
-                case MMU_GRANULARITY_4KB:
-                    if (!mmu_supports_4kb_(id_aa64mmfr0))
-                        PANIC("4KB granularity not supported");
-                    break;
-                case MMU_GRANULARITY_16KB:
-                    if (!mmu_supports_16kb_(id_aa64mmfr0))
-                        PANIC("16KB granularity not supported");
-                    break;
-                case MMU_GRANULARITY_64KB:
-                    if (!mmu_supports_64kb_(id_aa64mmfr0))
-                        PANIC("64KB granularity not supported");
-                    break;
-                default:
-                    PANIC("Unknown MMU granularity");
-            }
-
-
-        // Disable mmu (required for reconfiguration)
-        uint64 sctlr = _mmu_get_SCTLR_EL1();
-        sctlr &= ~(0b1ul << 0);
-        _mmu_set_SCTLR_EL1(sctlr);
-
-
-        _mmu_set_TTBR0_EL1((uintptr)tbl0.dcs);
-        _mmu_set_TTBR1_EL1((uintptr)tbl1.dcs);
-        mmu_apply_cfg(h->cfg_);
-    }
-}
-
-
-void mmu_destroy(mmu_handle* h, mmu_op_info* info)
-{
-    UNLOCKED_free_subtree(h, ttbr0_from_handle(h), h->cfg_.lo_gran, MMU_TBL_LV0, info);
-    UNLOCKED_free_subtree(h, ttbr1_from_handle(h), h->cfg_.hi_gran, MMU_TBL_LV0, info);
+	return MMU_UNMAP_OK;
 }

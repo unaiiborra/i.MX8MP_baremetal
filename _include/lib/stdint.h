@@ -9,22 +9,22 @@
 #define STDINT
 
 typedef enum {
-    STDINT_INT8,
-    STDINT_UINT8,
-    STDINT_INT16,
-    STDINT_UINT16,
-    STDINT_INT32,
-    STDINT_UINT32,
-    STDINT_INT64,
-    STDINT_UINT64,
+	STDINT_INT8,
+	STDINT_UINT8,
+	STDINT_INT16,
+	STDINT_UINT16,
+	STDINT_INT32,
+	STDINT_UINT32,
+	STDINT_INT64,
+	STDINT_UINT64,
 } STDINT_TYPES;
 
 /// Base representation of integer numbers
 typedef enum {
-    STDINT_BASE_REPR_DEC = 10,
-    STDINT_BASE_REPR_HEX = 16,
-    STDINT_BASE_REPR_BIN = 2,
-    STDINT_BASE_REPR_OCT = 8,
+	STDINT_BASE_REPR_DEC	= 10,
+	STDINT_BASE_REPR_HEX	= 16,
+	STDINT_BASE_REPR_BIN	= 2,
+	STDINT_BASE_REPR_OCT	= 8,
 } STDINT_BASE_REPR;
 
 typedef signed char int8;
@@ -60,44 +60,44 @@ typedef unsigned long long uintptr;
 #    error "Unsupported pointer size"
 #endif
 
-#define SIZE_MAX ((size_t)-1)
+#define SIZE_MAX      ((size_t)-1)
 
-#define INT8_MIN (-128)
-#define INT8_MAX 127
-#define UINT8_MAX 255U
+#define INT8_MIN      (-128)
+#define INT8_MAX      127
+#define UINT8_MAX     255U
 
-#define INT16_MIN (-32768)
-#define INT16_MAX 32767
-#define UINT16_MAX 65535U
+#define INT16_MIN     (-32768)
+#define INT16_MAX     32767
+#define UINT16_MAX    65535U
 
-#define INT32_MIN (-2147483647 - 1)
-#define INT32_MAX 2147483647
-#define UINT32_MAX 4294967295U
+#define INT32_MIN     (-2147483647 - 1)
+#define INT32_MAX     2147483647
+#define UINT32_MAX    4294967295U
 
-#define INT64_MIN (-9223372036854775807LL - 1LL)
-#define INT64_MAX 9223372036854775807LL
-#define UINT64_MAX 18446744073709551615ULL
+#define INT64_MIN     (-9223372036854775807LL - 1LL)
+#define INT64_MAX     9223372036854775807LL
+#define UINT64_MAX    18446744073709551615ULL
 
 
 // TODO: acabar estos
-#define INTPTR_MIN LONG_MIN
-#define INTPTR_MAX LONG_MAX
-#define UINTPTR_MAX ULONG_MAX
+#define INTPTR_MIN     LONG_MIN
+#define INTPTR_MAX     LONG_MAX
+#define UINTPTR_MAX    ULONG_MAX
 
-#define INTMAX_MIN INT64_MIN
-#define INTMAX_MAX INT64_MAX
-#define UINTMAX_MAX UINT64_MAX
+#define INTMAX_MIN     INT64_MIN
+#define INTMAX_MAX     INT64_MAX
+#define UINTMAX_MAX    UINT64_MAX
 
 typedef union {
-    int8 int8;
-    uint8 uint8;
+	int8	int8;
+	uint8	uint8;
 
-    int16 int16;
-    uint16 uint16;
+	int16	int16;
+	uint16	uint16;
 
-    int32 int32;
-    uint32 uint32;
+	int32	int32;
+	uint32	uint32;
 
-    int64 int64;
-    uint64 uint64;
+	int64	int64;
+	uint64	uint64;
 } STDINT_UNION;

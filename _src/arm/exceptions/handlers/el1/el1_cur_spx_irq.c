@@ -6,9 +6,9 @@
 
 void el1_cur_spx_irq_handler(void)
 {
-    irq_id intid = GICV3_get_intid_el1();
+	irq_id intid = GICV3_get_intid_el1();
 
-    kernel_handle_irq(intid);
+	kernel_handle_irq(intid);
 
-    GICV3_ack_intid_el1(intid);
+	GICV3_ack_intid_el1(intid);
 }

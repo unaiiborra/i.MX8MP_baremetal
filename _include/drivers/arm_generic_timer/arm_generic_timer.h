@@ -8,8 +8,8 @@ void AGT_init_stage0(const driver_handle *h);
 void AGT_handle_irq(const driver_handle *h);
 
 /*
-	Counter
-*/
+ *      Counter
+ */
 
 uint64 AGT_ns_to_cycles(uint64 ns);
 uint64 AGT_us_to_cycles(uint64 us);
@@ -25,8 +25,8 @@ uint64 AGT_cnt_time_ns(void);
 uint64 AGT_cnt_time_us(void);
 
 /*
-	Timer
-*/
+ *      Timer
+ */
 
 /// Callbacks must be irq safe and non blocking. Calling the driver functions
 /// from the callback is allowed, as the driver will defer the scheduling of the
@@ -35,10 +35,10 @@ typedef void *timer_arg;
 typedef void (*timer_cb_t)(timer_arg);
 
 typedef struct {
-	spinlock_t lock;
-	timer_cb_t timer_cb;
-	timer_arg arg;
-	bool timer_fired;
+	spinlock_t	lock;
+	timer_cb_t	timer_cb;
+	timer_arg	arg;
+	bool		timer_fired;
 	// As calling the functions that require the state of the driver locks the
 	// state, calling from the callback those functions again will result in an
 	// infinite lock. Because of that, the driver checks and "emulates" the
@@ -46,23 +46,21 @@ typedef struct {
 	// by defering the actions. Thanks to this, calling the driver functions
 	// from the callback is safe
 	struct {
-		spinlock_t under_callback_gate;	 // Locked if not under callback
-		bool under_cb_scheduled;
-		timer_cb_t under_cb_timer_cb;
-		timer_arg under_cb_arg;
-		uint64 cycles_v;
+		spinlock_t	under_callback_gate; // Locked if not under callback
+		bool		under_cb_scheduled;
+		timer_cb_t	under_cb_timer_cb;
+		timer_arg	under_cb_arg;
+		uint64		cycles_v;
 	} defer_cb;
 } agt_state;
 
 /// Schedules the timer, returns if the timer was already set and it was
 /// overrided.
-bool AGT_timer_schedule_delta(const driver_handle *h, uint64 delta_ns,
-							  timer_cb_t cb, timer_arg arg);
+bool AGT_timer_schedule_delta(const driver_handle *h, uint64 delta_ns, timer_cb_t cb, timer_arg arg);
 
 /// Schedules the timer, returns if the timer was already set and it was
 /// overrided.
-bool AGT_timer_schedule_cycles(const driver_handle *h, uint64 cycles,
-							   timer_cb_t cb, timer_arg arg);
+bool AGT_timer_schedule_cycles(const driver_handle *h, uint64 cycles, timer_cb_t cb, timer_arg arg);
 
 /// Returns is a timer has been scheduled, it does not represent the state of
 /// the hardware 1:1

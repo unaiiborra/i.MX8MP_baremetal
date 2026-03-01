@@ -8,7 +8,7 @@
 
 // 17.2.14.2 - 7366
 
-#define UART_UTXD_OFFSET 0x40UL
+#define UART_UTXD_OFFSET    0x40UL
 
 static inline void UART_UTXD_write(uintptr base, uint8 v)
 {
